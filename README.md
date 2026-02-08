@@ -1,4 +1,4 @@
-# 🚀 TICKETOWSKY - Industrial Ticket Engine
+# 🚀 TICKETOWSKY
 
 **Modern-Endüstriyel Ticket Yönetim Sistemi**  
 ServiceNow ve JIRA benzeri profesyonel destek ve görev takibi için tasarlanmış, tamamen istemci tabanlı bir uygulamadır.
@@ -61,5 +61,6 @@ Proje tamamen istemci tabanlıdır. Sunucu veya veritabanı gerektirmez; veriler
 Detaylar için [CONTRIBUTING.md](CONTRIBUTING.md) ve [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) dosyasını inceleyiniz.
 
 ## 📄 Lisans
+
 
 Bu proje MIT lisansı altında dağıtılmaktadır. Detaylar için [LICENSE](LICENSE) dosyasını inceleyiniz.
