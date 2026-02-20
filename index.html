@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdn.jsdelivr.net;">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+
+    <meta name="description"
+        content="Modern ticket yönetim sistemi - ServiceNow, JIRA benzeri profesyonel destek ve görev takibi">
+    <title>TICKETOWSKY - Industrial Ticket Engine</title>
+
+    <!-- Industrial Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Teko:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <link rel="stylesheet" href="styles.css?v=102">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="4" fill="url(#moltenGradient)" />
+                    <path d="M16 8L20 12H18V20H14V12H12L16 8Z" fill="white" />
+                    <path d="M10 22H22V24H10V22Z" fill="white" />
+                    <defs>
+                        <linearGradient id="moltenGradient" x1="0" y1="0" x2="32" y2="32">
+                            <stop offset="0%" stop-color="#ff4d00" />
+                            <stop offset="100%" stop-color="#ff0000" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <h1>TICKETOWSKY</h1>
+            </div>
+
+            <div class="header-actions">
+                <button class="btn-ghost-scan" id="silentMonitorBtn" title="Sessiz izlemeyi başlat">
+                    <span class="monitor-icon">👁️</span>
+                    <span class="monitor-text">Sessiz Mod: KAPALI</span>
+                </button>
+
+                <a href="audit.html" class="btn-secondary" title="Güvenlik Günlüğü">🔒 Audit Log</a>
+
+                <button class="btn-primary" id="newTicketBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    Yeni Ticket
+                </button>
+
+                <button class="theme-toggle" id="themeToggle" aria-label="Tema Değiştir">
+                    <svg class="sun-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="2" />
+                        <path
+                            d="M10 2V4M10 16V18M18 10H16M4 10H2M15.66 4.34L14.24 5.76M5.76 14.24L4.34 15.66M15.66 15.66L14.24 14.24M5.76 5.76L4.34 4.34"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                    <svg class="moon-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path
+                            d="M17 11.5C15.75 12.5 14.13 13 12.5 13C8.36 13 5 9.64 5 5.5C5 3.87 5.5 2.25 6.5 1C3.36 2.13 1 5.13 1 8.5C1 12.64 4.36 16 8.5 16C11.87 16 14.87 13.64 16 10.5L17 11.5Z"
+                            fill="currentColor" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Dashboard Stats -->
+        <section class="dashboard-stats">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M9 11H15M9 15H15M21 5V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3H19C20.1046 3 21 3.89543 21 5Z"
+                            stroke="white" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <p class="stat-label">Toplam Tickets</p>
+                    <h2 class="stat-value" id="totalTickets">0</h2>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9" stroke="white" stroke-width="2" />
+                        <path d="M12 6V12L16 14" stroke="white" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <p class="stat-label">Açık Tickets</p>
+                    <h2 class="stat-value" id="openTickets">0</h2>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                            stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <p class="stat-label">Devam Eden</p>
+                    <h2 class="stat-value" id="inProgressTickets">0</h2>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                            d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
+                            stroke="white" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <p class="stat-label">Kritik</p>
+                    <h2 class="stat-value" id="criticalTickets">0</h2>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+            <div class="chart-card">
+                <h3>Durum Dağılımı</h3>
+                <canvas id="statusChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Öncelik Seviyesi</h3>
+                <canvas id="priorityChart"></canvas>
+            </div>
+        </section>
+
+        <!-- View Switcher & Filters -->
+        <section class="controls-section">
+            <div class="view-switcher">
+                <button class="view-btn active" data-view="list">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M3 4H17M3 10H17M3 16H17" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" />
+                    </svg>
+                    Liste Görünümü
+                </button>
+                <button class="view-btn" data-view="kanban">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="2" y="3" width="5" height="14" rx="1" stroke="currentColor" stroke-width="2" />
+                        <rect x="8" y="3" width="5" height="8" rx="1" stroke="currentColor" stroke-width="2" />
+                        <rect x="14" y="3" width="5" height="11" rx="1" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                    Kanban Panosu
+                </button>
+            </div>
+
+            <div class="filters">
+                <input type="text" id="searchInput" placeholder="Ticket ara..." class="search-input">
+
+                <select id="statusFilter" class="filter-select">
+                    <option value="all">Tüm Durumlar</option>
+                    <option value="open">Açık</option>
+                    <option value="in-progress">Devam Eden</option>
+                    <option value="resolved">Çözüldü</option>
+                    <option value="closed">Kapalı</option>
+                    <option value="candidate">Aday (Ghost)</option>
+                </select>
+
+                <select id="priorityFilter" class="filter-select">
+                    <option value="all">Tüm Öncelikler</option>
+                    <option value="low">Düşük</option>
+                    <option value="medium">Orta</option>
+                    <option value="high">Yüksek</option>
+                    <option value="critical">Kritik</option>
+                </select>
+
+                <select id="categoryFilter" class="filter-select">
+                    <option value="all">Tüm Kategoriler</option>
+                    <option value="bug">Bug</option>
+                    <option value="feature">Özellik</option>
+                    <option value="task">Görev</option>
+                    <option value="support">Destek</option>
+                </select>
+
+                <button class="btn-secondary" id="clearFilters">Filtreleri Temizle</button>
+                <button class="btn-secondary" id="forceResetBtn"
+                    style="border-color: var(--status-critical); color: var(--status-critical); margin-left: 10px;"
+                    title="Tüm verileri temizle ve veritabanını yenile">
+                    ⚠️ Hard Reset
+                </button>
+            </div>
+        </section>
+
+        <!-- List View -->
+        <section class="list-view" id="listView">
+            <div class="tickets-container">
+                <table class="tickets-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Başlık</th>
+                            <th>Durum</th>
+                            <th>Öncelik</th>
+                            <th>Kategori</th>
+                            <th>SLA</th>
+                            <th>Atanan</th>
+                            <th>Oluşturulma</th>
+                            <th>Aksiyonlar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticketsTableBody">
+                        <!-- Tickets will be rendered here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Kanban View -->
+        <section class="kanban-view hidden" id="kanbanView">
+            <div class="kanban-board">
+                <div class="kanban-column" data-status="open">
+                    <div class="column-header">
+                        <h3>Açık</h3>
+                        <span class="column-count" id="openCount">0</span>
+                    </div>
+                    <div class="column-content" id="openColumn"></div>
+                </div>
+
+                <div class="kanban-column" data-status="in-progress">
+                    <div class="column-header">
+                        <h3>Devam Eden</h3>
+                        <span class="column-count" id="inProgressCount">0</span>
+                    </div>
+                    <div class="column-content" id="inProgressColumn"></div>
+                </div>
+
+                <div class="kanban-column" data-status="resolved">
+                    <div class="column-header">
+                        <h3>Çözüldü</h3>
+                        <span class="column-count" id="resolvedCount">0</span>
+                    </div>
+                    <div class="column-content" id="resolvedColumn"></div>
+                </div>
+
+                <div class="kanban-column" data-status="closed">
+                    <div class="column-header">
+                        <h3>Kapalı</h3>
+                        <span class="column-count" id="closedCount">0</span>
+                    </div>
+                    <div class="column-content" id="closedColumn"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Security Audit logs are now exclusively in audit.html -->
+    </div>
+
+    <!-- Create/Edit Ticket Modal -->
+    <div class="modal" id="ticketModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Yeni Ticket Oluştur</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+
+            <form id="ticketForm">
+                <input type="hidden" id="ticketId">
+
+                <div class="form-group">
+                    <label for="ticketTitle">Başlık *</label>
+                    <input type="text" id="ticketTitle" required placeholder="Ticket başlığını girin">
+                </div>
+
+                <div class="form-group">
+                    <label for="ticketDescription">Açıklama *</label>
+                    <textarea id="ticketDescription" rows="4" required placeholder="Detaylı açıklama"></textarea>
+                    <div class="smart-scan-container">
+                        <button type="button" class="btn-ghost-scan" id="smartScanBtn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                            </svg>
+                            Sistem & Hata Tarama (Ghost Preventer)
+                        </button>
+                        <span id="scanStatus" class="scan-status"></span>
+                    </div>
+
+                    <!-- 3. Anticipatory Spare Parts -->
+                    <div class="hardware-health-widget" id="hardwareHealthWidget" style="display: none;">
+                        <div class="health-header">
+                            <span class="health-icon">🔧</span>
+                            <strong>Donanım Öngörü Analizi (Predictive Health)</strong>
+                        </div>
+                        <div id="healthResults" class="health-results">
+                            <!-- Hardware analysis will appear here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ticketPriority">Öncelik *</label>
+                        <select id="ticketPriority" required>
+                            <option value="low">Düşük</option>
+                            <option value="medium" selected>Orta</option>
+                            <option value="high">Yüksek</option>
+                            <option value="critical">Kritik</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ticketCategory">Kategori *</label>
+                        <select id="ticketCategory" required>
+                            <option value="bug">Bug</option>
+                            <option value="feature">Özellik</option>
+                            <option value="task" selected>Görev</option>
+                            <option value="support">Destek</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ticketAssignee">Atanan</label>
+                        <input type="text" id="ticketAssignee" placeholder="Kullanıcı adı">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ticketEstimatedHours">Tahmini Süre (saat)</label>
+                        <input type="number" id="ticketEstimatedHours" min="0.5" step="0.5" placeholder="2.5">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="ticketStatus">Durum</label>
+                    <select id="ticketStatus">
+                        <option value="open" selected>Açık</option>
+                        <option value="in-progress">Devam Eden</option>
+                        <option value="resolved">Çözüldü</option>
+                        <option value="closed">Kapalı</option>
+                    </select>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="cancelModal">İptal</button>
+                    <button type="submit" class="btn-primary">Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sandbox / Digital Twin Modal -->
+    <div class="modal" id="sandboxModal">
+        <div class="modal-content modal-xl">
+            <div class="modal-header">
+                <h2>🧬 Otomatik İkiz (Digital Twin Sandbox)</h2>
+                <button class="modal-close" id="closeSandbox">&times;</button>
+            </div>
+            <div class="sandbox-container">
+                <div class="sandbox-sidebar">
+                    <div class="env-card">
+                        <h4>Kaynak Ortam</h4>
+                        <div class="env-stat">
+                            <span>OS:</span> <strong id="sbOS">Windows 11 Pro</strong>
+                        </div>
+                        <div class="env-stat">
+                            <span>RAM:</span> <strong id="sbRAM">16GB / 65% Used</strong>
+                        </div>
+                        <div class="env-stat">
+                            <span>App:</span> <strong id="sbApp">Excel.exe (v16.0)</strong>
+                        </div>
+                        <div class="env-status online">Canlı Senkronizasyon</div>
+                    </div>
+
+                    <!-- 1. Chaos Prevention (Impact Analysis) -->
+                    <div class="env-card impact-card" id="impactAnalysisCard" style="display: none;">
+                        <h4>Chaos Prevention (Etki Analizi)</h4>
+                        <div class="impact-analysis-content">
+                            <div id="impactResults" class="impact-results">
+                                <div class="impact-placeholder">Analiz için çözümü simüle edin...</div>
+                            </div>
+                            <div id="alternativeActions" class="alternative-container" style="display: none;">
+                                <!-- Alternatives will be injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sandbox-terminal">
+                    <div class="terminal-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                        <span class="terminal-title">Twinconsole.exe - Connected to Sandbox-77A</span>
+                    </div>
+                    <div class="terminal-body" id="sandboxTerminal">
+                        <div class="line">Initializing Digital Twin environment...</div>
+                        <div class="line">Loading snapshot [SNAPSHOT_20260205_ERR]... Done.</div>
+                        <div class="line type-writer">_</div>
+                    </div>
+                    <div class="sandbox-controls">
+                        <button class="btn-secondary" id="simulateFixBtn">🧪 Çözümü Simüle Et</button>
+                        <button class="btn-primary" id="deployFixBtn" disabled>🚀 Kaynağa Uygula (Canlı)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ticket Detail Panel -->
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+            <h2 id="detailTitle">Ticket Detayı</h2>
+            <button class="panel-close" id="closePanel">&times;</button>
+        </div>
+
+        <div class="detail-content">
+            <div class="detail-section">
+                <div class="detail-badges">
+                    <span class="badge" id="detailStatus"></span>
+                    <span class="badge" id="detailPriority"></span>
+                    <span class="badge" id="detailCategory"></span>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-actions">
+                    <button class="btn-secondary btn-sm" id="editTicketBtn">Düzenle</button>
+                    <button class="btn-danger btn-sm" id="deleteTicketBtn">Sil</button>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Açıklama</h3>
+                <p id="detailDescription"></p>
+            </div>
+
+            <!-- Shadow IT Radar -->
+            <div class="detail-section diagnostic-panel">
+                <h3>🔍 Shadow IT Radar (System Diagnostics)</h3>
+                <div class="diagnostic-card">
+                    <div class="diagnostic-header">
+                        <span class="pulse-dot"></span>
+                        <h4>Son 30 Dakika Analizi</h4>
+                    </div>
+                    <ul id="diagnosticList" class="diagnostic-list">
+                        <!-- Diagnostics will be loaded here -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Time Machine -->
+            <div class="detail-section time-machine-panel">
+                <h3>⏳ Sistem Zaman Makinesi</h3>
+                <div class="time-machine-card">
+                    <div class="restore-point">
+                        <div class="restore-icon">↩️</div>
+                        <div class="restore-info">
+                            <h4>Son Başarılı Yapılandırma</h4>
+                            <p>Dün, 14:30 (Otomatik Snapshot)</p>
+                        </div>
+                        <button class="btn-restore" id="restoreBtn">Geri Yükle</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-meta">
+                    <div class="meta-item">
+                        <strong>ID:</strong>
+                        <span id="detailId"></span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Atanan:</strong>
+                        <div id="assigneeWrapper" class="assignee-passing">
+                            <!-- Bilet Passla UI will be injected here -->
+                            <span id="detailAssignee"></span>
+                        </div>
+                    </div>
+                    <div class="meta-item">
+                        <strong>SLA Kalan:</strong>
+                        <span id="detailSLA" class="sla-digital-clock"></span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Oluşturulma:</strong>
+                        <span id="detailCreated"></span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Güncelleme:</strong>
+                        <span id="detailUpdated"></span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Tahmini Süre:</strong>
+                        <span id="detailEstimatedHours"></span>
+                    </div>
+                    <div class="meta-item">
+                        <strong>Geçen Süre:</strong>
+                        <span id="detailElapsedTime"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Aktivite Geçmişi</h3>
+                <div class="timeline" id="detailTimeline">
+                    <!-- Timeline events will be rendered here -->
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <h3>Yorumlar</h3>
+                <div class="comments" id="detailComments">
+                    <!-- Comments will be rendered here -->
+                </div>
+                <form class="comment-form" id="commentForm">
+                    <textarea id="commentText" rows="3" placeholder="Yorum ekle..." required></textarea>
+                    <div class="comment-actions">
+                        <button type="submit" class="btn-primary btn-sm">Yorum Ekle</button>
+                        <button type="button" class="btn-secondary btn-sm" id="humanizeBtn"
+                            title="Teknik terimleri kullanıcı dostu dile çevir">
+                            🔮 Ghostwriter (Tercüman)
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="detail-section">
+                <h3>Dosyalar</h3>
+                <div class="attachments" id="detailAttachments">
+                    <!-- Attachments will be rendered here -->
+                </div>
+                <div class="upload-zone" id="uploadZone">
+                    <input type="file" id="fileInput" multiple accept="image/*,.pdf,.doc,.docx,.txt">
+                    <label for="fileInput">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                            <path d="M20 10V30M10 20H30" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" />
+                        </svg>
+                        <p>Dosya sürükleyin veya seçin</p>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Global Error Monitor -->
+    <script>
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            console.error('--- TICKETOWSKY GLOBAL ERROR ---', { msg, url, lineNo, columnNo, error });
+            if (typeof showToast === 'function') {
+                showToast(`Kritik Hata: ${msg}`, 'error');
+            }
+            return false;
+        };
+    </script>
+    <script src="app.js?v=102"></script>
+</body>
+
+</html>

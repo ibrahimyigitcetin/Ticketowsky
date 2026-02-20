@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TICKETOWSKY - Security Audit Log</title>
+    <meta name="description" content="Security audit log for TICKETOWSKY ticket management system">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=JetBrains+Mono:wght@400;500;600&family=Teko:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="styles.css?v=102">
+    <style>
+        /* Audit Page Specific Styles */
+        .audit-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--spacing-xl);
+        }
+
+        .audit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-xl);
+            padding-bottom: var(--spacing-lg);
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .audit-header h1 {
+            font-family: var(--font-heading);
+            color: var(--primary);
+            font-size: var(--font-size-2xl);
+            text-shadow: 0 0 10px rgba(255, 77, 0, 0.6);
+        }
+
+        .audit-controls {
+            display: flex;
+            gap: var(--spacing-md);
+            align-items: center;
+        }
+
+        .audit-table-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-metal);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .audit-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .audit-table thead {
+            background: var(--bg-tertiary);
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .audit-table th {
+            padding: var(--spacing-md);
+            text-align: left;
+            font-weight: 600;
+            color: var(--primary);
+            font-size: var(--font-size-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .audit-table td {
+            padding: var(--spacing-md);
+            border-bottom: 1px solid var(--border-color);
+            font-family: var(--font-mono);
+            font-size: var(--font-size-sm);
+        }
+
+        .audit-table tbody tr:hover {
+            background: var(--bg-glass-hover);
+        }
+
+        .audit-level {
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        .audit-level.info {
+            background: rgba(0, 217, 255, 0.2);
+            color: var(--info);
+        }
+
+        .audit-level.warning {
+            background: rgba(255, 204, 0, 0.2);
+            color: var(--warning);
+        }
+
+        .audit-level.critical {
+            background: rgba(255, 0, 0, 0.2);
+            color: var(--danger);
+            animation: pulse-red 2s infinite;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all var(--transition-base);
+        }
+
+        .back-link:hover {
+            color: var(--secondary);
+            transform: translateX(-4px);
+        }
+
+        .audit-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .audit-stat {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-metal);
+            border-left: 4px solid var(--primary);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-sm);
+        }
+
+        .audit-stat-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .audit-stat-value {
+            font-size: var(--font-size-2xl);
+            font-weight: 700;
+            color: var(--primary);
+            font-family: var(--font-mono);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-xl);
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <h1>🔒 SECURITY AUDIT</h1>
+            </div>
+            <div class="header-actions">
+                <a href="index.html" class="back-link">← Ana Sayfaya Dön</a>
+                <button id="themeToggle" class="theme-toggle" title="Tema Değiştir">
+                    <span class="moon-icon">🌙</span>
+                    <span class="sun-icon">☀️</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="audit-container">
+        <div class="audit-header">
+            <h1>🛡️ Fortress Security Log</h1>
+            <div class="audit-controls">
+                <select id="levelFilter" class="filter-select">
+                    <option value="all">Tüm Seviyeler</option>
+                    <option value="info">Info</option>
+                    <option value="warning">Warning</option>
+                    <option value="critical">Critical</option>
+                </select>
+                <button id="clearAuditBtn" class="btn-secondary">🗑️ Temizle</button>
+                <button id="exportAuditBtn" class="btn-primary">📥 Dışa Aktar</button>
+            </div>
+        </div>
+
+        <div class="audit-stats">
+            <div class="audit-stat">
+                <div class="audit-stat-label">Toplam Kayıt</div>
+                <div class="audit-stat-value" id="totalCount">0</div>
+            </div>
+            <div class="audit-stat">
+                <div class="audit-stat-label">Info</div>
+                <div class="audit-stat-value" id="infoCount">0</div>
+            </div>
+            <div class="audit-stat">
+                <div class="audit-stat-label">Warning</div>
+                <div class="audit-stat-value" id="warningCount">0</div>
+            </div>
+            <div class="audit-stat">
+                <div class="audit-stat-label">Critical</div>
+                <div class="audit-stat-value" id="criticalCount">0</div>
+            </div>
+        </div>
+
+        <div class="audit-table-container">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th>Zaman</th>
+                        <th>Seviye</th>
+                        <th>Olay</th>
+                        <th>Detay</th>
+                    </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                    <tr class="empty-state">
+                        <td colspan="4">Henüz güvenlik kaydı bulunmamaktadır.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        // Global Error Monitor
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            console.error('--- AUDIT PAGE GLOBAL ERROR ---', { msg, url, lineNo, columnNo, error });
+            const tbody = document.getElementById('auditTableBody');
+            if (tbody) {
+                tbody.innerHTML = `<tr class="error-state"><td colspan="4">Sayfa hatası: ${msg} <br> <small>(Line: ${lineNo})</small></td></tr>`;
+            }
+            return false;
+        };
+
+        console.log("Audit log script initializing...");
+
+        // Theme Management
+        let currentTheme = localStorage.getItem('theme') || 'dark';
+        if (currentTheme === 'light') {
+            document.body.classList.add('light-theme');
+        }
+
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            if (currentTheme === 'dark') {
+                currentTheme = 'light';
+                document.body.classList.add('light-theme');
+            } else {
+                currentTheme = 'dark';
+                document.body.classList.remove('light-theme');
+            }
+            localStorage.setItem('theme', currentTheme);
+        });
+
+        // Audit Log Management
+        function loadAuditLog() {
+            const data = localStorage.getItem('security_audit_log');
+            return data ? JSON.parse(data) : [];
+        }
+
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString('tr-TR');
+        }
+
+        function renderAuditLog(filter = 'all') {
+            const tbody = document.getElementById('auditTableBody');
+            if (!tbody) return;
+
+            try {
+                console.log("--- SECURITY AUDIT RENDER START ---");
+                console.log("Filter:", filter);
+
+                const rawData = localStorage.getItem('security_audit_log');
+                if (!rawData) {
+                    console.log("No audit data in localStorage.");
+                    tbody.innerHTML = '<tr class="empty-state"><td colspan="4">Henüz güvenlik kaydı bulunmamaktadır.</td></tr>';
+                    return;
+                }
+
+                const logs = JSON.parse(rawData);
+                console.log("Raw logs fetched:", logs.length);
+                console.table(logs.slice(0, 5)); // log first 5 for debugging
+
+                if (!Array.isArray(logs)) {
+                    console.error("Audit logs is not an array!");
+                    tbody.innerHTML = '<tr class="error-state"><td colspan="4">Hata: Kayıt formatı geçersiz.</td></tr>';
+                    return;
+                }
+
+                // High-resilience normalization
+                const normalizedLogs = logs.map((log, index) => {
+                    try {
+                        if (!log || typeof log !== 'object') return null;
+                        return {
+                            timestamp: log.timestamp || new Date().toISOString(),
+                            severity: (log.severity || log.level || 'info').toLowerCase(),
+                            event: log.event || 'Unknown Event',
+                            details: log.details || log.detail || 'No details'
+                        };
+                    } catch (err) {
+                        console.error(`Error normalizing log at index ${index}:`, err);
+                        return null;
+                    }
+                }).filter(log => log !== null);
+
+                console.log("Normalized logs count:", normalizedLogs.length);
+
+                // Update stats
+                document.getElementById('totalCount').textContent = normalizedLogs.length;
+                document.getElementById('infoCount').textContent = normalizedLogs.filter(l => l.severity === 'info').length;
+                document.getElementById('warningCount').textContent = normalizedLogs.filter(l => l.severity === 'warning').length;
+                document.getElementById('criticalCount').textContent = normalizedLogs.filter(l => l.severity === 'critical').length;
+
+                // Filter logic
+                const filteredLogs = filter === 'all'
+                    ? normalizedLogs
+                    : normalizedLogs.filter(log => log.severity === filter);
+
+                if (normalizedLogs.length > 0 && filteredLogs.length === 0) {
+                    tbody.innerHTML = `<tr class="empty-state"><td colspan="4">Bu seviyede (${filter}) kayıt bulunmamaktadır. Toplam ${normalizedLogs.length} kayıt var.</td></tr>`;
+                    return;
+                }
+
+                // Render table
+                const rowsHtml = [...filteredLogs].reverse().map(log => {
+                    const sevClass = ['info', 'warning', 'critical'].includes(log.severity) ? log.severity : 'info';
+                    return `
+                        <tr>
+                            <td>${formatDate(log.timestamp)}</td>
+                            <td><span class="audit-level ${sevClass}">${log.severity.toUpperCase()}</span></td>
+                            <td>${log.event}</td>
+                            <td>${log.details}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                tbody.innerHTML = rowsHtml;
+                console.log("--- SECURITY AUDIT RENDER SUCCESS ---");
+
+            } catch (error) {
+                console.error("CRITICAL RENDER ERROR:", error);
+                tbody.innerHTML = `<tr class="error-state"><td colspan="4">Kritik Hata: ${error.message}</td></tr>`;
+
+                // Panic recovery: just show raw count if possible
+                try {
+                    const rawData = localStorage.getItem('security_audit_log');
+                    const logs = JSON.parse(rawData);
+                    document.getElementById('totalCount').textContent = logs.length;
+                } catch (e) { }
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('levelFilter').addEventListener('change', (e) => {
+            renderAuditLog(e.target.value);
+        });
+
+        document.getElementById('clearAuditBtn').addEventListener('click', () => {
+            if (confirm('Tüm güvenlik kayıtlarını silmek istediğinizden emin misiniz?')) {
+                localStorage.removeItem('security_audit_log');
+                renderAuditLog();
+            }
+        });
+
+        document.getElementById('exportAuditBtn').addEventListener('click', () => {
+            const logs = loadAuditLog();
+            const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `security_audit_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Initial render
+        renderAuditLog();
+
+        // Listen for changes from other tabs
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'security_audit_log') {
+                renderAuditLog();
+            }
+        });
+    </script>
+</body>
+
+</html>
