@@ -1,4 +1,4 @@
-# 🚀 TICKETOWSKY
+# 🎟️ TICKETOWSKY
 
 **Modern-Endüstriyel Ticket Yönetim Sistemi**  
 ServiceNow ve JIRA benzeri profesyonel destek ve görev takibi için tasarlanmış, tamamen istemci tabanlı bir uygulamadır.
@@ -64,3 +64,4 @@ Detaylar için [CONTRIBUTING.md](CONTRIBUTING.md) ve [CODE_OF_CONDUCT.md](CODE_O
 
 
 Bu proje MIT lisansı altında dağıtılmaktadır. Detaylar için [LICENSE](LICENSE) dosyasını inceleyiniz.
+
