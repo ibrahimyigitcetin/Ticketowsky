@@ -116,7 +116,7 @@ function maskSensitiveData(text) {
     if (typeof text !== 'string') return text;
     // Patterns for common secrets
     const patterns = [
-        { regex: /([a-f0-9]{32,})/gi, label: '[REDACTED_API_KEY]' }, // Hex keys
+        { regex: /([a-f0-9]{48,})/gi, label: '[REDACTED_API_KEY]' }, // Hex keys (min 48 chars to avoid ID conflicts)
         { regex: /(password|sifre|şifre)\s*[:=]\s*[^\s,;]+/gi, label: '$1: [REDACTED_SECRET]' },
         { regex: /\b(?:\d[ -]*?){13,16}\b/g, label: '[REDACTED_CARD_NUMBER]' }
     ];
@@ -174,11 +174,11 @@ const SecurityGuardian = {
         list.innerHTML = '';
         this._auditLog.forEach(log => {
             const div = document.createElement('div');
-            div.className = `audit-entry audit-${log.level}`;
+            div.className = `audit-entry audit-${log.severity}`;
             div.innerHTML = `
                 <span class="audit-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
                 <span class="audit-event">${log.event}</span>
-                <p class="audit-details">${log.detail}</p>
+                <p class="audit-details">${log.details}</p>
             `;
             list.appendChild(div);
         });
@@ -285,7 +285,7 @@ function calculateSLA(ticket) {
     } else if (percentage >= 80) {
         status = 'warning';
     } else if (percentage >= 50) {
-        status = 'warning';
+        status = 'caution';
     }
 
     return {
@@ -366,9 +366,9 @@ function loadFromLocalStorage() {
     }
 
     // Force initialization for this version (v2-fixed)
-    if (!localStorage.getItem('ticketowsky_v2_fixed') || !Array.isArray(tickets) || tickets.length < 50) {
+    if (!localStorage.getItem('ticketowsky_v2_fixed') || !Array.isArray(tickets)) {
         console.warn('Rebuilding database for v2-fixed...');
-        localStorage.clear(); // Clean state
+        localStorage.removeItem('tickets'); // Clean only tickets, preserve audit log and theme
         createSampleData();
         localStorage.setItem('ticketowsky_v2_fixed', 'true');
     }
@@ -622,26 +622,29 @@ function createSampleData() {
 // ==========================================
 // TICKET PASSING (Collaboration)
 // ==========================================
-function passTicket(ticketId, targetUser) {
-    const ticket = getTicket(ticketId);
+function passTicket(id, newAssignee) {
+    if (!newAssignee || !id) return;
+    const ticket = getTicket(id);
     if (!ticket) return;
 
-    const actionText = `Bilet ${targetUser} kullanıcısına paslandı.`;
+    const finalAssignee = newAssignee === 'Ben' ? 'Ahmet Yılmaz (Ben)' : newAssignee;
+    const actionText = `Bilet ${finalAssignee} kullanıcısına paslandı.`;
+
     const updatedTimeline = [...ticket.timeline, {
         action: actionText,
         user: 'System',
         timestamp: new Date().toISOString()
     }];
 
-    updateTicket(ticketId, {
-        assignee: targetUser,
+    updateTicket(id, {
+        assignee: finalAssignee,
         timeline: updatedTimeline,
         authenticity_token: SecurityGuardian._token
     });
 
     showToast(actionText, 'success');
     render();
-    if (selectedTicketId === ticketId) renderDetailPanel(ticketId);
+    if (selectedTicketId === id) renderDetailPanel(id);
 }
 
 
@@ -651,7 +654,11 @@ function passTicket(ticketId, targetUser) {
 /**
  * PERMITTED_PARAMS: White-list for mass assignment protection (Rails Guide)
  */
-const PERMITTED_PARAMS = ['title', 'description', 'status', 'priority', 'category', 'assignee', 'estimatedHours', 'authenticity_token'];
+const PERMITTED_PARAMS = [
+    'title', 'description', 'status', 'priority', 'category',
+    'assignee', 'estimatedHours', 'authenticity_token',
+    'comments', 'timeline', 'attachments', 'sandboxSession'
+];
 
 function createTicket(ticketData) {
     // 🛡️ SECURITY: Verify CSRF Token (Simulated)
@@ -720,20 +727,13 @@ function updateTicket(id, updates) {
         }
     });
 
-    const changes = [];
-    if (sanitizedUpdates.status && sanitizedUpdates.status !== oldTicket.status) {
-        changes.push({
-            action: `Durum değişti: ${getStatusLabel(oldTicket.status)} → ${getStatusLabel(sanitizedUpdates.status)}`,
-            user: 'Kullanıcı',
-            timestamp: new Date().toISOString()
-        });
-    }
+    const baseTimeline = updates.timeline || oldTicket.timeline;
 
     tickets[ticketIndex] = {
         ...oldTicket,
         ...sanitizedUpdates,
         updatedAt: new Date().toISOString(),
-        timeline: [...oldTicket.timeline, ...changes]
+        timeline: [...baseTimeline]
     };
 
     SecurityGuardian.audit('Ticket Updated', `ID: ${id}`, 'info');
@@ -780,7 +780,6 @@ function addComment(ticketId, commentText) {
         timeline: updatedTimeline,
         authenticity_token: SecurityGuardian._token // 🛡️ Fix CSRF
     });
-    return comment;
 }
 
 function addAttachment(ticketId, file) {
@@ -1817,9 +1816,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     });
 
-    // 4. Silent Monitor (Sessiz Çığlık)
     const silentBtn = document.getElementById('silentMonitorBtn');
     let silentInterval = null;
+
+    // Ensure cleanup of interval on page unload (Bug #1 v2)
+    window.addEventListener('beforeunload', () => {
+        if (silentInterval) {
+            clearInterval(silentInterval);
+            silentInterval = null;
+        }
+    });
 
     silentBtn.addEventListener('click', () => {
         if (silentInterval) {
@@ -1827,16 +1833,23 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(silentInterval);
             silentInterval = null;
             silentBtn.classList.remove('active');
-            silentBtn.querySelector('.monitor-text').textContent = 'Sessiz Mod: KAPALI';
+            const monitorText = silentBtn.querySelector('.monitor-text');
+            if (monitorText) monitorText.textContent = 'Sessiz Mod: KAPALI';
+            else silentBtn.textContent = 'Sessiz Mod: KAPALI';
             showToast('Sessiz İzleme Durduruldu', 'info');
         } else {
             // Start
             silentBtn.classList.add('active');
-            silentBtn.querySelector('.monitor-text').textContent = 'Sessiz Mod: AÇIK';
+            const monitorText = silentBtn.querySelector('.monitor-text');
+            if (monitorText) monitorText.textContent = 'Sessiz Mod: AÇIK';
+            else silentBtn.textContent = 'Sessiz Mod: AÇIK';
             showToast('Sessiz İzleme Başlatıldı - Anomaliler Takip Ediliyor...', 'success');
 
             // Simulate finding anomalies
             silentInterval = setInterval(() => {
+                const candidateCount = tickets.filter(t => t.status === 'candidate').length;
+                if (candidateCount >= 20) return; // Cap candidate tickets to prevent bloat
+
                 if (Math.random() > 0.7) { // 30% chance every check
                     createAnomalyTicket();
                 }
@@ -2269,10 +2282,13 @@ async function runSimulation(alternativeScript = null) {
         deployBtn.disabled = true;
 
         if (alternativeScript) {
-            term.innerHTML += `<div class="line terminal-line-cmd">PS C:\\Users\\Administrator> Invoke-Fix -Script "${alternativeScript}"</div>`;
-            term.innerHTML += `<div class="line terminal-line-iterative">🔄 Alternatif çözüm uygulanıyor: ${alternativeScript}...</div>`;
+            const lineCmd = createSafeElement('div', `PS C:\\Users\\Administrator> Invoke-Fix -Script "${alternativeScript}"`, 'line terminal-line-cmd');
+            term.appendChild(lineCmd);
+            const lineIter = createSafeElement('div', `🔄 Alternatif çözüm uygulanıyor: ${alternativeScript}...`, 'line terminal-line-iterative');
+            term.appendChild(lineIter);
         } else {
-            term.innerHTML += `<div class="line terminal-line-cmd">PS C:\\Users\\Administrator> .\\fix_v2.ps1 -Source "DigitalTwin"</div>`;
+            const lineCmd = createSafeElement('div', 'PS C:\\Users\\Administrator> .\\fix_v2.ps1 -Source "DigitalTwin"', 'line terminal-line-cmd');
+            term.appendChild(lineCmd);
         }
 
         const scenarioKey = term.dataset.currentScenario || 'database';
@@ -2295,18 +2311,21 @@ async function runSimulation(alternativeScript = null) {
                 return;
             }
 
-            term.innerHTML += `<div class="line">${line}</div>`;
+            const lineEl = createSafeElement('div', line, 'line');
+            term.appendChild(lineEl);
             term.scrollTop = term.scrollHeight;
         }
 
         await new Promise(r => setTimeout(r, 800));
-        term.innerHTML += `<div class="line success">✅ SIMULATION COMPLETE - STABILITY VERIFIED</div>`;
+        const successEl = createSafeElement('div', '✅ SIMULATION COMPLETE - STABILITY VERIFIED', 'line success');
+        term.appendChild(successEl);
         term.scrollTop = term.scrollHeight;
 
         analyzeImpact(lines, scenarioKey);
     } catch (error) {
         console.error('Simulation Error:', error);
-        term.innerHTML += `<div class="line terminal-line-error">🛑 HATA: Simülasyon sırasında bir aksaklık oluştu: ${error.message}</div>`;
+        const errEl = createSafeElement('div', `🛑 HATA: Simülasyon sırasında bir aksaklık oluştu: ${error.message}`, 'line terminal-line-error');
+        term.appendChild(errEl);
         showToast('Simülasyon Hatası: ' + error.message, 'error');
     } finally {
         simulateBtn.disabled = false;
@@ -2467,11 +2486,12 @@ function generateShadowITReport(ticketId) {
 
     list.innerHTML = '';
 
-    // Deterministic random based on ticketId
+    // Deterministic random based on ticketId (Bug #5 v2 fixed: stateful LCG)
     const seed = ticketId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    let randomState = seed;
     const seededRandom = () => {
-        const x = Math.sin(seed) * 10000;
-        return x - Math.floor(x);
+        randomState = (randomState * 1664525 + 1013904223) & 0xffffffff;
+        return (randomState >>> 0) / 0xffffffff;
     };
 
     const anomalies = [
@@ -2491,7 +2511,7 @@ function generateShadowITReport(ticketId) {
     const tempAnomalies = [...anomalies];
 
     for (let i = 0; i < count; i++) {
-        const index = (seed + i) % tempAnomalies.length;
+        const index = Math.floor(seededRandom() * tempAnomalies.length);
         selected.push(tempAnomalies.splice(index, 1)[0]);
     }
 
@@ -2582,17 +2602,7 @@ setInterval(() => {
     });
 }, 1000);
 
-function passTicket(id, newAssignee) {
-    if (!newAssignee || !id) return;
-    const finalAssignee = newAssignee === 'Ben' ? 'Ahmet Yılmaz (Ben)' : newAssignee;
-    updateTicket(id, {
-        assignee: finalAssignee,
-        authenticity_token: SecurityGuardian._token
-    });
-    render();
-    renderDetailPanel(id);
-    showToast(`Bilet başarıyla ${finalAssignee} sorumlusuna devredildi.`, 'success');
-}
+// REPLACED: Consolidated passTicket version moved to line 625
 
 function quickResolve(ticketId) {
     updateTicket(ticketId, { status: 'resolved', authenticity_token: SecurityGuardian._token });
