@@ -1,4 +1,4 @@
-# 🚀 TICKETOWSKY — Modern-Endüstriyel Ticket Yönetim Sistemi
+# 🎟️ TICKETOWSKY — Modern-Endüstriyel Ticket Yönetim Sistemi
 
 > **Modern, tamamen istemci tabanlı, endüstriyel tasarımlı ticket yönetim sistemi.**  
 > ServiceNow ve JIRA ilhamıyla geliştirilmiş; sunucu veya veritabanı gerektirmez.
@@ -285,3 +285,4 @@ Ticket'ın geçen süresini ve SLA hedefini karşılaştırır. Çıktı:
 ## 📄 Lisans
 
 Bu proje MIT lisansı altında dağıtılmaktadır. Detaylar için `LICENSE` dosyasını inceleyiniz.
+
