@@ -2230,7 +2230,7 @@ function openSandbox() {
             <div class="line">Snapshot Data:</div>
             <div class="line">- Target Ticket: ${ticket.title}</div>
             <div class="line">- System Context: Windows 11 Enterprise (22H2)</div>
-            <div class="line">- Assigned Agent: Antigravity AI</div>
+            <div class="line">- Assigned Agent: Ticketowsky AI</div>
             <div class="line">----------------------------------------</div>
             <div class="line type-writer">_</div>
         `;
