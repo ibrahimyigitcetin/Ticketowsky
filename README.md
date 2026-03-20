@@ -3,6 +3,10 @@
 > **Modern, tamamen istemci tabanlı, endüstriyel tasarımlı ticket yönetim sistemi.**  
 > ServiceNow ve JIRA ilhamıyla geliştirilmiş; sunucu veya veritabanı gerektirmez.
 
+![Ticketowsky_GUI_1](./docs/gui_1.png)
+
+![Ticketowsky_GUI_2](./docs/gui_2.png)
+
 ---
 
 ## 📋 İçindekiler
