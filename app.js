@@ -136,7 +136,14 @@ const SecurityGuardian = {
     _auditLog: [],
 
     generateToken() {
-        this._token = 'TKT-' + Math.random().toString(36).substring(2, 15);
+        const arr = new Uint8Array(16);
+        crypto.getRandomValues(arr);
+        this._token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+        return this._token;
+    },
+
+    getToken() {
+        if (!this._token) this.generateToken();
         return this._token;
     },
 
@@ -145,17 +152,21 @@ const SecurityGuardian = {
     },
 
     audit(event, details, severity = 'info') {
+        const arr = new Uint8Array(4);
+        crypto.getRandomValues(arr);
+        const id = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+
         const entry = {
-            id: Date.now(),
+            id,
             timestamp: new Date().toISOString(),
             event,
-            details: escapeHtml(details),
+            details: escapeHtml(String(details)),
             severity
         };
         this._auditLog.unshift(entry);
         console.log(`[SECURITY AUDIT] [${severity.toUpperCase()}] ${event}: ${details}`);
-        if (this._auditLog.length > 100) this._auditLog.pop(); // Cap log
-        this.saveAuditLog();
+        if (this._auditLog.length > 100) this._auditLog.pop();
+        _debouncedSaveAudit();
         // Audit logs are rendered exclusively in audit.html via localStorage
     },
 
@@ -184,6 +195,14 @@ const SecurityGuardian = {
         });
     }
 };
+
+// Debounced audit log save — prevents excessive localStorage writes
+const _debouncedSaveAudit = debounce(() => {
+    localStorage.setItem('security_audit_log', JSON.stringify(SecurityGuardian._auditLog));
+}, 300);
+
+// Ensure audit log is saved before page unload
+window.addEventListener('beforeunload', () => SecurityGuardian.saveAuditLog());
 
 /**
  * Safe createElement with text content (prevents XSS)
@@ -639,7 +658,7 @@ function passTicket(id, newAssignee) {
     updateTicket(id, {
         assignee: finalAssignee,
         timeline: updatedTimeline,
-        authenticity_token: SecurityGuardian._token
+        authenticity_token: SecurityGuardian.getToken()
     });
 
     showToast(actionText, 'success');
@@ -663,7 +682,7 @@ const PERMITTED_PARAMS = [
 function createTicket(ticketData) {
     // 🛡️ SECURITY: Verify CSRF Token (Simulated)
     if (!SecurityGuardian.verifyToken(ticketData.authenticity_token)) {
-        const msg = `Token Mismatch: Expected="${SecurityGuardian._token}", Got="${ticketData.authenticity_token}"`;
+        const msg = `Token Mismatch: Expected="${SecurityGuardian.getToken()}", Got="${ticketData.authenticity_token}"`;
         SecurityGuardian.audit('CSRF Failure', msg, 'critical');
         showToast('Güvenlik Hatası: Geçersiz işlem tokenı.', 'error');
         console.error('[SECURITY] CSRF Check Failed:', msg);
@@ -700,8 +719,8 @@ function createTicket(ticketData) {
 
 function updateTicket(id, updates) {
     // 🛡️ SECURITY: Verify CSRF Token (Simulated)
-    // For local operations, we allow system-level updates if token is specifically provided or if it's an internal call
-    if (updates.authenticity_token && !SecurityGuardian.verifyToken(updates.authenticity_token)) {
+    // Token verification is mandatory for all update operations
+    if (!SecurityGuardian.verifyToken(updates.authenticity_token)) {
         SecurityGuardian.audit('CSRF Failure', `Unauthorized update attempted for Ticket ID: ${id}`, 'critical');
         showToast('Güvenlik Hatası: Token doğrulaması başarısız.', 'error');
         return null;
@@ -741,9 +760,16 @@ function updateTicket(id, updates) {
     return tickets[ticketIndex];
 }
 
-function deleteTicket(id) {
+function deleteTicket(id, token) {
+    if (!SecurityGuardian.verifyToken(token)) {
+        SecurityGuardian.audit('Unauthorized delete attempt', `Ticket ID: ${id}`, 'critical');
+        showToast('Güvenlik Hatası: Silme işlemi doğrulanamadı.', 'error');
+        return false;
+    }
     tickets = tickets.filter(t => t.id !== id);
     saveToLocalStorage();
+    SecurityGuardian.audit('Ticket Deleted', `ID: ${id}`, 'info');
+    return true;
 }
 
 function getTicket(id) {
@@ -778,7 +804,7 @@ function addComment(ticketId, commentText) {
     updateTicket(ticketId, {
         comments: updatedComments,
         timeline: updatedTimeline,
-        authenticity_token: SecurityGuardian._token // 🛡️ Fix CSRF
+        authenticity_token: SecurityGuardian.getToken() // 🛡️ Fix CSRF
     });
 }
 
@@ -806,7 +832,7 @@ function addAttachment(ticketId, file) {
     updateTicket(ticketId, {
         attachments: updatedAttachments,
         timeline: updatedTimeline,
-        authenticity_token: SecurityGuardian._token // 🛡️ Fix CSRF
+        authenticity_token: SecurityGuardian.getToken() // 🛡️ Fix CSRF
     });
     return attachment;
 }
@@ -1607,7 +1633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedTicketId && confirm('Bu ticket\'ı silmek istediğinizden emin misiniz?')) {
             // Log the delete action as a security event
             SecurityGuardian.audit('Manual Delete', `User requested deletion of Ticket ID: ${selectedTicketId}`, 'warning');
-            deleteTicket(selectedTicketId);
+            deleteTicket(selectedTicketId, SecurityGuardian.getToken());
             closeDetailPanel();
             render();
             showToast('Ticket silindi', 'info');
@@ -1655,17 +1681,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = btn.dataset.id;
 
         if (action === 'resolve' && id) {
-            updateTicket(id, { status: 'resolved', authenticity_token: SecurityGuardian._token });
+            updateTicket(id, { status: 'resolved', authenticity_token: SecurityGuardian.getToken() });
             render();
             if (selectedTicketId === id) renderDetailPanel(id);
         } else if (action === 'assign' && id) {
-            updateTicket(id, { assignee: 'Ben', authenticity_token: SecurityGuardian._token });
+            updateTicket(id, { assignee: 'Ben', authenticity_token: SecurityGuardian.getToken() });
             render();
             if (selectedTicketId === id) renderDetailPanel(id);
         } else if (action === 'delete' && id) {
             if (confirm('Bileti silmek istiyor musunuz?')) {
                 SecurityGuardian.audit('Quick Delete', `Ticket ID: ${id}`, 'warning');
-                deleteTicket(id);
+                deleteTicket(id, SecurityGuardian.getToken());
                 render();
             }
         }
@@ -1895,7 +1921,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create Candidate Ticket
         const ticket = createTicket({
             title: `[OTOMATİK] ${anomaly}`,
-            description: `Sessiz İzleme Modu tarafından otonom olarak tespit edildi.\n\nAnaliz:\n- OS: Windows 11 Enterprise\n- Anomali Skoru: ${Math.floor(Math.random() * 40) + 60}/100\n- Plaza dili: "Bu issue'yu hızlıca handle edelim."\n\nOtomatik Log:\n[${new Date().toLocaleTimeString()}] Monitoring başladı\n[${new Date().toLocaleTimeString()}] Pattern eklendi\n[${new Date().toLocaleTimeString()}] Ticket otomatik olarak passlandı`,
+            description: `Sessiz İzleme Modu tarafından otonom olarak tespit edildi.\n\nAnaliz:\n- OS: Windows 11 Enterprise\n- Anomali Skoru: ${Math.floor(Math.random() * 40) + 60}/100\n\nOtomatik Log:\n[${new Date().toLocaleTimeString()}] İzleme başladı\n[${new Date().toLocaleTimeString()}] Anomali örüntüsü tespit edildi\n[${new Date().toLocaleTimeString()}] Ticket otomatik oluşturuldu`,
             priority: Math.random() > 0.5 ? 'high' : 'medium',
             category: 'support',
             status: 'candidate',
@@ -2216,8 +2242,33 @@ function openSandbox() {
     // STATE MANAGEMENT: Check if ticket has a saved sandbox state
     if (!ticket.sandboxSession) {
         console.log('Starting fresh sandbox session for ticket:', selectedTicketId);
-        const scenarios = Object.values(SCENARIO_LIBRARY);
-        const scenarioKey = Object.keys(SCENARIO_LIBRARY)[Math.floor(Math.random() * Object.keys(SCENARIO_LIBRARY).length)];
+
+        // Match scenario to ticket content intelligently
+        const combined = (ticket.title + ' ' + ticket.description + ' ' + ticket.category).toLowerCase();
+        let scenarioKey = 'database'; // fallback
+
+        if (combined.match(/ssl|certificate|sertifika|https|tls|brute.?force|firewall|güvenlik|security|vpn|şifre|şifrele|encrypt|password|phishing|vulnerability|cve|cyber/)) {
+            scenarioKey = 'security';
+        } else if (combined.match(/network|ağ|latency|bant|bandwidth|dns|vpn|packet|firewall|port|ddos|internet|connectivity|wifi|wi-fi|branch|şube|isp/)) {
+            scenarioKey = 'network';
+        } else if (combined.match(/database|db|sql|deadlock|index|transaction|etl|data.?warehouse|backup|redis|cache|elasticsearch/)) {
+            scenarioKey = 'database';
+        } else if (combined.match(/active.?directory|ad.?sync|ldap|domain.?controller|kullanıcı.?yetki|azure.?ad|kimlik/)) {
+            scenarioKey = 'adsync';
+        } else if (combined.match(/ransomware|fidye|file.?server|dosya.?sunucu|shadow.?copy|backup|yedek/)) {
+            scenarioKey = 'fileserver';
+        } else if (combined.match(/hardware|donanım|ssd|cpu|sıcaklık|fan|batarya|nvme|disk|ram|macbook|laptop|fiziksel/)) {
+            scenarioKey = 'hardware';
+        } else if (combined.match(/load.?balanc|nginx|varnish|cluster|node|trafik|ağırlık|yük.?devret/)) {
+            scenarioKey = 'loadbalancer';
+        } else if (combined.match(/encrypt|vault|key.?rotation|anahtar|şifrele|k8s|secret/)) {
+            scenarioKey = 'encryption';
+        } else if (combined.match(/ui|ux|css|frontend|react|dashboard|ekran|görsel|performans|render|layout/)) {
+            scenarioKey = 'ui';
+        } else if (combined.match(/kubernetes|docker|container|k8s|pod|microservice|memory|oom|heap/)) {
+            scenarioKey = 'database'; // closest match for infra issues
+        }
+
         const scenario = SCENARIO_LIBRARY[scenarioKey];
 
         terminal.dataset.currentScenario = scenarioKey;
@@ -2245,15 +2296,33 @@ function openSandbox() {
         document.getElementById('deployFixBtn').disabled = true;
     } else {
         console.log('Resuming existing sandbox session for ticket:', selectedTicketId);
-        terminal.innerHTML = ticket.sandboxSession.terminalHTML;
+        // SECURITY: Restore from text-only data using createSafeElement (prevents XSS)
+        terminal.innerHTML = '';
+        if (ticket.sandboxSession.terminalLines) {
+            ticket.sandboxSession.terminalLines.forEach(({ text, className }) => {
+                terminal.appendChild(createSafeElement('div', text, className));
+            });
+        } else {
+            terminal.appendChild(createSafeElement('div', 'Eski oturum verisi — yeniden simüle edin.', 'line'));
+        }
         terminal.dataset.currentScenario = ticket.sandboxSession.scenarioKey;
 
-        if (ticket.sandboxSession.impactResultsHTML) {
+        if (ticket.sandboxSession.impactLines && ticket.sandboxSession.impactLines.length > 0) {
             impactCard.style.display = 'block';
-            impactResults.innerHTML = ticket.sandboxSession.impactResultsHTML;
+            impactResults.innerHTML = '';
+            ticket.sandboxSession.impactLines.forEach(({ text, className }) => {
+                impactResults.appendChild(createSafeElement('div', text, className));
+            });
             if (alternativeActions) {
-                alternativeActions.innerHTML = ticket.sandboxSession.alternativeActionsHTML || '';
-                alternativeActions.style.display = ticket.sandboxSession.alternativeActionsHTML ? 'block' : 'none';
+                alternativeActions.innerHTML = '';
+                if (ticket.sandboxSession.altLines && ticket.sandboxSession.altLines.length > 0) {
+                    ticket.sandboxSession.altLines.forEach(({ text, className }) => {
+                        alternativeActions.appendChild(createSafeElement('div', text, className));
+                    });
+                    alternativeActions.style.display = 'block';
+                } else {
+                    alternativeActions.style.display = 'none';
+                }
             }
             document.getElementById('deployFixBtn').disabled = ticket.sandboxSession.deployDisabled;
         } else {
@@ -2275,6 +2344,15 @@ async function runSimulation(alternativeScript = null) {
     if (!ticket) {
         showToast('Hata: Simülasyon için geçerli bir bilet seçilmedi.', 'error');
         return;
+    }
+
+    // Track applied alternatives in sandbox session
+    if (alternativeScript) {
+        if (!ticket.sandboxSession) ticket.sandboxSession = {};
+        if (!ticket.sandboxSession.appliedAlternatives) ticket.sandboxSession.appliedAlternatives = [];
+        if (!ticket.sandboxSession.appliedAlternatives.includes(alternativeScript)) {
+            ticket.sandboxSession.appliedAlternatives.push(alternativeScript);
+        }
     }
 
     try {
@@ -2343,12 +2421,27 @@ function saveSandboxSession(ticketId) {
     const alternativeActions = document.getElementById('alternativeActions');
     const deployBtn = document.getElementById('deployFixBtn');
 
+    // SECURITY: Store text-only data instead of raw innerHTML to prevent XSS
+    const terminalLines = [...terminal.children].map(el => ({
+        text: el.textContent,
+        className: el.className
+    }));
+    const impactLines = [...impactResults.children].map(el => ({
+        text: el.textContent,
+        className: el.className
+    }));
+    const altLines = [...alternativeActions.children].map(el => ({
+        text: el.textContent,
+        className: el.className
+    }));
+
     ticket.sandboxSession = {
-        terminalHTML: terminal.innerHTML,
+        terminalLines,
         scenarioKey: terminal.dataset.currentScenario,
-        impactResultsHTML: impactResults.innerHTML,
-        alternativeActionsHTML: alternativeActions.innerHTML,
-        deployDisabled: deployBtn.disabled
+        impactLines,
+        altLines,
+        deployDisabled: deployBtn.disabled,
+        appliedAlternatives: (ticket.sandboxSession && ticket.sandboxSession.appliedAlternatives) || []
     };
 
     saveToLocalStorage();
@@ -2373,62 +2466,76 @@ function analyzeImpact(executedSteps, scenarioKey = null) {
     const stepsText = executedSteps.join(' ').toLowerCase();
     let risks = [];
 
-    // Add scenario-specific risks if they exist and haven't been bypassed
+    // Get already-applied alternatives for the current ticket
+    const ticket = getTicket(selectedTicketId);
+    const appliedAlternatives = (ticket && ticket.sandboxSession && ticket.sandboxSession.appliedAlternatives) || [];
+
+    // Add scenario-specific risks if they exist and haven't been bypassed or already applied
     if (scenarioKey && SCENARIO_LIBRARY[scenarioKey]) {
         SCENARIO_LIBRARY[scenarioKey].risks.forEach(risk => {
-            if (!stepsText.includes(risk.script.toLowerCase())) {
+            const alreadyApplied = appliedAlternatives.some(a => a.toLowerCase() === risk.script.toLowerCase());
+            if (!alreadyApplied && !stepsText.includes(risk.script.toLowerCase())) {
                 risks.push(risk);
             }
         });
     }
 
     if (stepsText.includes('registry') || stepsText.includes('ps1')) {
-        // Exclude safe GPO alternative
-        if (!stepsText.includes('gpo-safe-config')) {
+        const gpoScript = 'Apply GPO-Safe-Config.xml (Bypass Registry Direct Edit)';
+        if (!stepsText.includes('gpo-safe-config') && !appliedAlternatives.some(a => a.toLowerCase() === gpoScript.toLowerCase())) {
             risks.push({
                 type: 'critical',
                 msg: '<strong>⚠️ KRİTİK ETKİ:</strong> Registry değişikliği tespit edildi. Bu işlem "Mali Müşavirlik Portalı" bağlantısını koparabilir!',
                 alt: 'GPO tabanlı konfigürasyon (Safe Registry)',
-                script: 'Apply GPO-Safe-Config.xml (Bypass Registry Direct Edit)'
+                script: gpoScript
             });
         }
     }
 
     if (stepsText.includes('cache') || stepsText.includes('service')) {
-        // Exclude hot reload alternative
-        if (!stepsText.includes('hotreload')) {
+        const hotReloadScript = 'Invoke-ServiceHotReload -Mode Seamless';
+        if (!stepsText.includes('hotreload') && !appliedAlternatives.some(a => a.toLowerCase() === hotReloadScript.toLowerCase())) {
             risks.push({
                 type: 'warning',
                 msg: '<strong>⚠️ UYARI:</strong> Servis yeniden başlatılması geçici oturum kayıplarına neden olabilir.',
                 alt: 'Yük Devretme (Hot Reload)',
-                script: 'Invoke-ServiceHotReload -Mode Seamless'
+                script: hotReloadScript
             });
         }
     }
 
     if (stepsText.includes('delete') || stepsText.includes('rm -rf')) {
-        risks.push({
-            type: 'critical',
-            msg: '<strong>🚫 TEHLİKE:</strong> Dosya silme işlemi tespit edildi! "Sistem Geri Yükleme" noktası oluşturulmadan devam edilemez.',
-            alt: 'Dosyaları Karantinaya Al',
-            script: 'Move-To-Quarantine -Source "AffectedFiles" -SafetyCheck $true'
-        });
+        const quarantineScript = 'Move-To-Quarantine -Source "AffectedFiles" -SafetyCheck $true';
+        if (!appliedAlternatives.some(a => a.toLowerCase() === quarantineScript.toLowerCase())) {
+            risks.push({
+                type: 'critical',
+                msg: '<strong>🚫 TEHLİKE:</strong> Dosya silme işlemi tespit edildi! "Sistem Geri Yükleme" noktası oluşturulmadan devam edilemez.',
+                alt: 'Dosyaları Karantinaya Al',
+                script: quarantineScript
+            });
+        }
     }
 
     if (stepsText.includes('port') || stepsText.includes('8080') || stepsText.includes('443')) {
-        risks.push({
-            type: 'warning',
-            msg: '<strong>⚠️ PORT ÇAKIŞMASI:</strong> Port değişikliği "System Tray" notification servislerini etkileyebilir.',
-            alt: 'VIRTUAL PORT MAPPING',
-            script: 'New-VPortMapping -Source 8080 -Target 8081 -StealthMode'
-        });
+        const vportScript = 'New-VPortMapping -Source 8080 -Target 8081 -StealthMode';
+        if (!appliedAlternatives.some(a => a.toLowerCase() === vportScript.toLowerCase())) {
+            risks.push({
+                type: 'warning',
+                msg: '<strong>⚠️ PORT ÇAKIŞMASI:</strong> Port değişikliği "System Tray" notification servislerini etkileyebilir.',
+                alt: 'VIRTUAL PORT MAPPING',
+                script: vportScript
+            });
+        }
     }
 
     results.innerHTML = '';
     alternativeActions.innerHTML = '';
 
     const scenario = SCENARIO_LIBRARY[scenarioKey];
-    const currentRisks = risks.length > 0 ? risks : (scenario ? scenario.risks : []);
+    const scenarioRisksFiltered = scenario
+        ? scenario.risks.filter(r => !appliedAlternatives.some(a => a.toLowerCase() === r.script.toLowerCase()))
+        : [];
+    const currentRisks = risks.length > 0 ? risks : scenarioRisksFiltered;
 
     if (currentRisks.length > 0) {
         currentRisks.forEach(risk => {
@@ -2605,20 +2712,20 @@ setInterval(() => {
 // REPLACED: Consolidated passTicket version moved to line 625
 
 function quickResolve(ticketId) {
-    updateTicket(ticketId, { status: 'resolved', authenticity_token: SecurityGuardian._token });
+    updateTicket(ticketId, { status: 'resolved', authenticity_token: SecurityGuardian.getToken() });
     render();
     showToast('Bilet çözüldü olarak işaretlendi.', 'success');
 }
 
 function quickAssign(ticketId) {
-    updateTicket(ticketId, { assignee: 'Ben', authenticity_token: SecurityGuardian._token });
+    updateTicket(ticketId, { assignee: 'Ben', authenticity_token: SecurityGuardian.getToken() });
     render();
     showToast('Bilet size atandı.', 'success');
 }
 
 function quickDelete(ticketId) {
     if (confirm('Bu bileti silmek istediğinizden emin misiniz?')) {
-        deleteTicket(ticketId);
+        deleteTicket(ticketId, SecurityGuardian.getToken());
         render();
         showToast('Bilet silindi.', 'info');
     }
