@@ -167,6 +167,8 @@ Filtre bölümündeki **Hard Reset** butonu `localStorage.clear()` yaparak sayfa
 2. Başlık, açıklama, öncelik, kategori ve atanan kişiyi doldurun.
 3. **Kaydet** ile ticket oluşturulur ve listeye eklenir.
 
+![Ticketowsky_GUI_1_DETAILS](./docs/gui_1_details.png) ![Ticketowsky_GUI_2_DETAILS](./docs/gui_2_details.png)
+
 > **İpucu:** Açıklama alanına yazmaya başladığınızda Stres Analizi devreye girer. "Acil", "çöktü" gibi kelimeler yazarsanız öncelik otomatik Kritik'e yükseltilir.
 
 ### Kanban Görünümü
@@ -186,10 +188,14 @@ Filtre bölümündeki **Hard Reset** butonu `localStorage.clear()` yaparak sayfa
 4. Risk analizi ve alternatif yolları inceleyin.
 5. **🚀 Kaynağa Uygula** ile ticket otomatik "Çözüldü" statüsüne geçer.
 
+![Ticketowsky_GUI_3_DETAILS](./docs/gui_3_details.png)
+
 ### Güvenlik Audit Logu
 - `audit.html` dosyasını tarayıcıda açın.
 - Tüm güvenlik olaylarını seviyeye göre filtreleyin.
 - **Dışa Aktar** butonu ile JSON formatında indirin.
+
+![Ticketowsky_GUI_3](./docs/gui_3.png)
 
 ---
 
