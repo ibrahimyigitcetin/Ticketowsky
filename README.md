@@ -150,7 +150,7 @@ Tüm güvenlik olayları `localStorage['security_audit_log']` içinde saklanır.
 
 ---
 
-## Kurulum
+## ⚙️ Kurulum
 
 Sunucu kurulumu gerektirmez. Sadece dosyaları indirip tarayıcıda açın:
 
@@ -170,7 +170,7 @@ Filtre bölümündeki **Hard Reset** butonu `localStorage.clear()` yaparak sayfa
 
 ---
 
-## Kullanım Kılavuzu
+## 📒 Kullanım Kılavuzu
 
 ### Ticket Oluşturma
 1. Sağ üstteki **+ Yeni Ticket** butonuna tıklayın.
