@@ -9,6 +9,16 @@
 
 ---
 
+<div align="center">
+  <img src="https://img.shields.io/github/languages/count/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=blueviolet" alt="Language Count">
+  <img src="https://img.shields.io/github/languages/top/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=1e90ff" alt="Top Language">
+  <img src="https://img.shields.io/github/last-commit/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=ff69b4" alt="Last Commit">
+  <img src="https://img.shields.io/github/license/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=yellow" alt="License">
+  <img src="https://img.shields.io/badge/Status-Active-green?style=flat-square" alt="Status">
+  <img src="https://img.shields.io/badge/Contributions-Welcome-brightgreen?style=flat-square" alt="Contributions">
+</div>
+
+
 ## 📋 İçindekiler
 
 - [Genel Bakış](#genel-bakış)
