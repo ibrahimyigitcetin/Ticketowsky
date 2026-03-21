@@ -126,7 +126,7 @@ TICKETOWSKY
 
 ---
 
-## Güvenlik Katmanı
+## 🛡️ Güvenlik Katmanı
 
 TICKETOWSKY, Rails Security Guide prensiplerine dayanan simüle bir güvenlik katmanı içerir:
 
