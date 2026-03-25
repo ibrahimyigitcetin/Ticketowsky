@@ -9,7 +9,7 @@
 
     <!-- Security Headers -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
     <meta name="referrer" content="strict-origin-when-cross-origin">
 
     <!-- Fonts -->
@@ -182,7 +182,7 @@
 
     <main class="audit-container">
         <div class="audit-header">
-            <h1>🛡️ Fortress Security Log</h1>
+            <h1>🛡️ Ticketowsky Security Log</h1>
             <div class="audit-controls">
                 <select id="levelFilter" class="filter-select">
                     <option value="all">Tüm Seviyeler</option>
@@ -233,168 +233,7 @@
         </div>
     </main>
 
-    <script>
-        // Global Error Monitor
-        window.onerror = function (msg, url, lineNo, columnNo, error) {
-            console.error('--- AUDIT PAGE GLOBAL ERROR ---', { msg, url, lineNo, columnNo, error });
-            const tbody = document.getElementById('auditTableBody');
-            if (tbody) {
-                tbody.innerHTML = `<tr class="error-state"><td colspan="4">Sayfa hatası: ${msg} <br> <small>(Line: ${lineNo})</small></td></tr>`;
-            }
-            return false;
-        };
-
-        console.log("Audit log script initializing...");
-
-        // Theme Management
-        let currentTheme = localStorage.getItem('theme') || 'dark';
-        if (currentTheme === 'light') {
-            document.body.classList.add('light-theme');
-        }
-
-        document.getElementById('themeToggle').addEventListener('click', () => {
-            if (currentTheme === 'dark') {
-                currentTheme = 'light';
-                document.body.classList.add('light-theme');
-            } else {
-                currentTheme = 'dark';
-                document.body.classList.remove('light-theme');
-            }
-            localStorage.setItem('theme', currentTheme);
-        });
-
-        // Audit Log Management
-        function loadAuditLog() {
-            const data = localStorage.getItem('security_audit_log');
-            return data ? JSON.parse(data) : [];
-        }
-
-        function formatDate(isoString) {
-            const date = new Date(isoString);
-            return date.toLocaleString('tr-TR');
-        }
-
-        function renderAuditLog(filter = 'all') {
-            const tbody = document.getElementById('auditTableBody');
-            if (!tbody) return;
-
-            try {
-                console.log("--- SECURITY AUDIT RENDER START ---");
-                console.log("Filter:", filter);
-
-                const rawData = localStorage.getItem('security_audit_log');
-                if (!rawData) {
-                    console.log("No audit data in localStorage.");
-                    tbody.innerHTML = '<tr class="empty-state"><td colspan="4">Henüz güvenlik kaydı bulunmamaktadır.</td></tr>';
-                    return;
-                }
-
-                const logs = JSON.parse(rawData);
-                console.log("Raw logs fetched:", logs.length);
-                console.table(logs.slice(0, 5)); // log first 5 for debugging
-
-                if (!Array.isArray(logs)) {
-                    console.error("Audit logs is not an array!");
-                    tbody.innerHTML = '<tr class="error-state"><td colspan="4">Hata: Kayıt formatı geçersiz.</td></tr>';
-                    return;
-                }
-
-                // High-resilience normalization
-                const normalizedLogs = logs.map((log, index) => {
-                    try {
-                        if (!log || typeof log !== 'object') return null;
-                        return {
-                            timestamp: log.timestamp || new Date().toISOString(),
-                            severity: (log.severity || log.level || 'info').toLowerCase(),
-                            event: log.event || 'Unknown Event',
-                            details: log.details || log.detail || 'No details'
-                        };
-                    } catch (err) {
-                        console.error(`Error normalizing log at index ${index}:`, err);
-                        return null;
-                    }
-                }).filter(log => log !== null);
-
-                console.log("Normalized logs count:", normalizedLogs.length);
-
-                // Update stats
-                document.getElementById('totalCount').textContent = normalizedLogs.length;
-                document.getElementById('infoCount').textContent = normalizedLogs.filter(l => l.severity === 'info').length;
-                document.getElementById('warningCount').textContent = normalizedLogs.filter(l => l.severity === 'warning').length;
-                document.getElementById('criticalCount').textContent = normalizedLogs.filter(l => l.severity === 'critical').length;
-
-                // Filter logic
-                const filteredLogs = filter === 'all'
-                    ? normalizedLogs
-                    : normalizedLogs.filter(log => log.severity === filter);
-
-                if (normalizedLogs.length > 0 && filteredLogs.length === 0) {
-                    tbody.innerHTML = `<tr class="empty-state"><td colspan="4">Bu seviyede (${filter}) kayıt bulunmamaktadır. Toplam ${normalizedLogs.length} kayıt var.</td></tr>`;
-                    return;
-                }
-
-                // Render table
-                const rowsHtml = [...filteredLogs].reverse().map(log => {
-                    const sevClass = ['info', 'warning', 'critical'].includes(log.severity) ? log.severity : 'info';
-                    return `
-                        <tr>
-                            <td>${formatDate(log.timestamp)}</td>
-                            <td><span class="audit-level ${sevClass}">${log.severity.toUpperCase()}</span></td>
-                            <td>${log.event}</td>
-                            <td>${log.details}</td>
-                        </tr>
-                    `;
-                }).join('');
-
-                tbody.innerHTML = rowsHtml;
-                console.log("--- SECURITY AUDIT RENDER SUCCESS ---");
-
-            } catch (error) {
-                console.error("CRITICAL RENDER ERROR:", error);
-                tbody.innerHTML = `<tr class="error-state"><td colspan="4">Kritik Hata: ${error.message}</td></tr>`;
-
-                // Panic recovery: just show raw count if possible
-                try {
-                    const rawData = localStorage.getItem('security_audit_log');
-                    const logs = JSON.parse(rawData);
-                    document.getElementById('totalCount').textContent = logs.length;
-                } catch (e) { }
-            }
-        }
-
-        // Event Listeners
-        document.getElementById('levelFilter').addEventListener('change', (e) => {
-            renderAuditLog(e.target.value);
-        });
-
-        document.getElementById('clearAuditBtn').addEventListener('click', () => {
-            if (confirm('Tüm güvenlik kayıtlarını silmek istediğinizden emin misiniz?')) {
-                localStorage.removeItem('security_audit_log');
-                renderAuditLog();
-            }
-        });
-
-        document.getElementById('exportAuditBtn').addEventListener('click', () => {
-            const logs = loadAuditLog();
-            const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `security_audit_${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        });
-
-        // Initial render
-        renderAuditLog();
-
-        // Listen for changes from other tabs
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'security_audit_log') {
-                renderAuditLog();
-            }
-        });
-    </script>
+    <script src="audit-engine.js"></script>
 </body>
 
 </html>
