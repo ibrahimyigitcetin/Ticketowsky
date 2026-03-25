@@ -1,12 +1,22 @@
 // ==========================================
-// STATE MANAGEMENT
+// STATE MANAGEMENT & UI NAMESPACE
+// [ARCH-1.1 & ARCH-1.4]: Combined business state and UI state into
+// a single App namespace for better isolation and maintainability.
 // ==========================================
-let tickets = [];
-let currentView = 'list';
-let currentTheme = 'dark';
-let selectedTicketId = null;
-let statusChart = null;
-let priorityChart = null;
+const App = {
+    state: {
+        tickets: [],
+        theme: 'dark'
+    },
+    ui: {
+        currentView: 'list',
+        selectedTicketId: null,
+        charts: {
+            status: null,
+            priority: null
+        }
+    }
+};
 
 // ==========================================
 // UTILITY: Debounce function
@@ -111,14 +121,16 @@ function sanitizeFileName(filename) {
 /**
  * PII Masking: Redact sensitive information (API Keys, Passwords)
  * Prevents accidental exposure of secrets in ticket history
+ * Patterns target known secret formats to avoid false positives (Bug Report v6 §2.3)
  */
 function maskSensitiveData(text) {
     if (typeof text !== 'string') return text;
-    // Patterns for common secrets
     const patterns = [
-        { regex: /([a-f0-9]{48,})/gi, label: '[REDACTED_API_KEY]' }, // Hex keys (min 48 chars to avoid ID conflicts)
+        { regex: /sk-[a-zA-Z0-9]{32,}/g, label: '[REDACTED_API_KEY]' },
+        { regex: /Bearer\s+[A-Za-z0-9\-._~+\/]+=*/g, label: '[REDACTED_BEARER_TOKEN]' },
+        { regex: /\b[0-9a-f]{64}\b/gi, label: '[REDACTED_HASH]' },
         { regex: /(password|sifre|şifre)\s*[:=]\s*[^\s,;]+/gi, label: '$1: [REDACTED_SECRET]' },
-        { regex: /\b(?:\d[ -]*?){13,16}\b/g, label: '[REDACTED_CARD_NUMBER]' }
+        { regex: /\b\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4}\b/g, label: '[REDACTED_CARD_NUMBER]' }
     ];
     let sanitized = text;
     patterns.forEach(p => {
@@ -128,78 +140,81 @@ function maskSensitiveData(text) {
 }
 
 /**
- * SecurityGuardian: Simulated CSRF and Integrity Protection
- * Following Rails Authenticity Token principles
+ * SecurityGuardian: CSRF and Integrity Protection
+ * @simulated Bu CSRF mekanizması demo amaçlıdır.
+ * Gerçek bir server-side token doğrulaması yoktur.
+ * Production'da HttpOnly cookie + SameSite=Strict kullanılmalıdır.
  */
-const SecurityGuardian = {
-    _token: null,
-    _auditLog: [],
+const SecurityGuardian = (() => {
+    // Private state — inaccessible from outside
+    let _token = null;
+    let _auditLog = [];
 
-    generateToken() {
+    function _generateToken() {
         const arr = new Uint8Array(16);
         crypto.getRandomValues(arr);
-        this._token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-        return this._token;
-    },
-
-    getToken() {
-        if (!this._token) this.generateToken();
-        return this._token;
-    },
-
-    verifyToken(token) {
-        return token === this._token;
-    },
-
-    audit(event, details, severity = 'info') {
-        const arr = new Uint8Array(4);
-        crypto.getRandomValues(arr);
-        const id = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-
-        const entry = {
-            id,
-            timestamp: new Date().toISOString(),
-            event,
-            details: escapeHtml(String(details)),
-            severity
-        };
-        this._auditLog.unshift(entry);
-        console.log(`[SECURITY AUDIT] [${severity.toUpperCase()}] ${event}: ${details}`);
-        if (this._auditLog.length > 100) this._auditLog.pop();
-        _debouncedSaveAudit();
-        // Audit logs are rendered exclusively in audit.html via localStorage
-    },
-
-    saveAuditLog() {
-        localStorage.setItem('security_audit_log', JSON.stringify(this._auditLog));
-    },
-
-    loadAuditLog() {
-        const saved = localStorage.getItem('security_audit_log');
-        if (saved) this._auditLog = JSON.parse(saved);
-    },
-
-    renderAuditUI() {
-        const list = document.getElementById('securityAuditList');
-        if (!list) return;
-        list.innerHTML = '';
-        this._auditLog.forEach(log => {
-            const div = document.createElement('div');
-            div.className = `audit-entry audit-${log.severity}`;
-            div.innerHTML = `
-                <span class="audit-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
-                <span class="audit-event">${log.event}</span>
-                <p class="audit-details">${log.details}</p>
-            `;
-            list.appendChild(div);
-        });
+        return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     }
-};
 
-// Debounced audit log save — prevents excessive localStorage writes
-const _debouncedSaveAudit = debounce(() => {
-    localStorage.setItem('security_audit_log', JSON.stringify(SecurityGuardian._auditLog));
-}, 300);
+    const _debouncedSave = debounce(() => {
+        localStorage.setItem('security_audit_log', JSON.stringify(_auditLog));
+    }, 300);
+
+    return {
+        getToken() {
+            if (!_token) {
+                _token = sessionStorage.getItem('_csrf') ?? _generateToken();
+                sessionStorage.setItem('_csrf', _token);
+            }
+            return _token;
+        },
+
+        verifyToken(token) {
+            return token === this.getToken();
+        },
+
+        audit(event, details, severity = 'info') {
+            const arr = new Uint8Array(4);
+            crypto.getRandomValues(arr);
+            const id = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+
+            const entry = {
+                id,
+                timestamp: new Date().toISOString(),
+                event: escapeHtml(String(event)),
+                details: escapeHtml(String(details)),
+                severity
+            };
+            _auditLog.unshift(entry);
+            console.log(`[SECURITY AUDIT] [${severity.toUpperCase()}] ${event}: ${details}`);
+            if (_auditLog.length > 100) _auditLog.pop();
+            _debouncedSave();
+        },
+
+        saveAuditLog() {
+            localStorage.setItem('security_audit_log', JSON.stringify(_auditLog));
+        },
+
+        loadAuditLog() {
+            const saved = localStorage.getItem('security_audit_log');
+            if (saved) _auditLog = JSON.parse(saved);
+        },
+
+        renderAuditUI() {
+            const list = document.getElementById('securityAuditList');
+            if (!list) return;
+            list.innerHTML = '';
+            _auditLog.forEach(log => {
+                const div = document.createElement('div');
+                div.className = `audit-entry audit-${log.severity}`;
+                div.appendChild(createSafeElement('span', new Date(log.timestamp).toLocaleTimeString(), 'audit-time'));
+                div.appendChild(createSafeElement('span', log.event, 'audit-event'));
+                div.appendChild(createSafeElement('p', log.details, 'audit-details'));
+                list.appendChild(div);
+            });
+        }
+    };
+})();
 
 // Ensure audit log is saved before page unload
 window.addEventListener('beforeunload', () => SecurityGuardian.saveAuditLog());
@@ -249,13 +264,17 @@ function getElapsedTime(createdAt) {
     const now = new Date();
     const created = new Date(createdAt);
     const diffMs = now - created;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
+    const totalMinutes = Math.floor(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const days = Math.floor(hours / 24);
 
-    if (diffDays > 0) {
-        return `${diffDays} gün ${diffHours % 24} saat`;
+    if (days > 0) {
+        return `${days} gün ${hours % 24} saat`;
     }
-    return `${diffHours} saat`;
+    if (hours === 0) return `${minutes} dakika`;
+    if (minutes === 0) return `${hours} saat`;
+    return `${hours} saat ${minutes} dakika`;
 }
 
 // ==========================================
@@ -363,8 +382,8 @@ function showToast(message, type = 'info') {
 // ==========================================
 function saveToLocalStorage() {
     try {
-        localStorage.setItem('tickets', JSON.stringify(tickets));
-        localStorage.setItem('theme', currentTheme);
+        localStorage.setItem('tickets', JSON.stringify(App.state.tickets));
+        localStorage.setItem('theme', App.state.theme);
     } catch (e) {
         console.error('CRITICAL: LocalStorage save failed. Possibly circular structure or exceeded quota.', e);
         showToast('Veri kaydetme hatası: Tarayıcı hafızası dolu veya hatalı veri.', 'error');
@@ -377,24 +396,33 @@ function loadFromLocalStorage() {
 
     try {
         if (savedTickets && savedTickets !== 'undefined' && savedTickets !== 'null') {
-            tickets = JSON.parse(savedTickets);
+            App.state.tickets = JSON.parse(savedTickets);
         }
     } catch (e) {
         console.error('Failed to parse tickets from localStorage:', e);
-        tickets = [];
+        App.state.tickets = [];
     }
 
-    // Force initialization for this version (v2-fixed)
-    if (!localStorage.getItem('ticketowsky_v2_fixed') || !Array.isArray(tickets)) {
-        console.warn('Rebuilding database for v2-fixed...');
-        localStorage.removeItem('tickets'); // Clean only tickets, preserve audit log and theme
+    // Safe data migration — never destroy existing user data (Bug Report v6 §1.2)
+    if (!Array.isArray(App.state.tickets) || App.state.tickets.length === 0) {
+        console.warn('No valid ticket data found. Loading sample data...');
         createSampleData();
+    } else if (!localStorage.getItem('ticketowsky_v2_fixed')) {
+        console.log('Migrating ticket data to v2-fixed format...');
+        App.state.tickets = App.state.tickets.map(ticket => ({
+            ...ticket,
+            sandboxSession: ticket.sandboxSession ?? null,
+            comments: ticket.comments ?? [],
+            attachments: ticket.attachments ?? [],
+            timeline: ticket.timeline ?? [],
+        }));
+        saveToLocalStorage();
         localStorage.setItem('ticketowsky_v2_fixed', 'true');
     }
 
     if (savedTheme) {
-        currentTheme = savedTheme;
-        if (currentTheme === 'light') {
+        App.state.theme = savedTheme;
+        if (App.state.theme === 'light') {
             document.body.classList.add('light-theme');
         }
     }
@@ -634,7 +662,7 @@ function createSampleData() {
         })
     ];
 
-    tickets = sampleTickets;
+    App.state.tickets = sampleTickets;
     saveToLocalStorage();
 }
 
@@ -663,7 +691,7 @@ function passTicket(id, newAssignee) {
 
     showToast(actionText, 'success');
     render();
-    if (selectedTicketId === id) renderDetailPanel(id);
+    if (App.ui.selectedTicketId === id) renderDetailPanel(id);
 }
 
 
@@ -675,8 +703,7 @@ function passTicket(id, newAssignee) {
  */
 const PERMITTED_PARAMS = [
     'title', 'description', 'status', 'priority', 'category',
-    'assignee', 'estimatedHours', 'authenticity_token',
-    'comments', 'timeline', 'attachments', 'sandboxSession'
+    'assignee', 'estimatedHours', 'authenticity_token'
 ];
 
 function createTicket(ticketData) {
@@ -710,7 +737,7 @@ function createTicket(ticketData) {
         }]
     };
 
-    tickets.push(ticket);
+    App.state.tickets.push(ticket);
     SecurityGuardian.audit('Ticket Created', `ID: ${ticket.id} (${ticket.title})`, 'info');
     saveToLocalStorage();
     return ticket;
@@ -726,13 +753,13 @@ function updateTicket(id, updates) {
         return null;
     }
 
-    const ticketIndex = tickets.findIndex(t => t.id === id);
+    const ticketIndex = App.state.tickets.findIndex(t => t.id === id);
     if (ticketIndex === -1) {
         SecurityGuardian.audit('IDOR Attempt', `Access denied to non-existent or restricted Ticket ID: ${id}`, 'warning');
         return null;
     }
 
-    const oldTicket = { ...tickets[ticketIndex] };
+    const oldTicket = { ...App.state.tickets[ticketIndex] };
     const sanitizedUpdates = {};
 
     // 🛡️ SECURITY: Mass Assignment Protection
@@ -746,18 +773,27 @@ function updateTicket(id, updates) {
         }
     });
 
-    const baseTimeline = updates.timeline || oldTicket.timeline;
+    // Explicitly handle system/UI fields outside of mass-assignment
+    const systemUpdates = {};
+    if (updates.comments) systemUpdates.comments = updates.comments;
+    if (updates.attachments) systemUpdates.attachments = updates.attachments;
+    if (updates.sandboxSession !== undefined) systemUpdates.sandboxSession = updates.sandboxSession;
 
-    tickets[ticketIndex] = {
+    const mergedTimeline = updates.timeline
+        ? [...oldTicket.timeline, ...updates.timeline.filter(item => !oldTicket.timeline.some(existing => existing.timestamp === item.timestamp && existing.action === item.action))]
+        : oldTicket.timeline;
+
+    App.state.tickets[ticketIndex] = {
         ...oldTicket,
         ...sanitizedUpdates,
+        ...systemUpdates,
         updatedAt: new Date().toISOString(),
-        timeline: [...baseTimeline]
+        timeline: mergedTimeline
     };
 
     SecurityGuardian.audit('Ticket Updated', `ID: ${id}`, 'info');
     saveToLocalStorage();
-    return tickets[ticketIndex];
+    return App.state.tickets[ticketIndex];
 }
 
 function deleteTicket(id, token) {
@@ -773,7 +809,7 @@ function deleteTicket(id, token) {
 }
 
 function getTicket(id) {
-    return tickets.find(t => t.id === id);
+    return App.state.tickets.find(t => t.id === id);
 }
 
 function addComment(ticketId, commentText) {
@@ -808,9 +844,31 @@ function addComment(ticketId, commentText) {
     });
 }
 
+// Allowed MIME types and size limit for attachments (Bug Report v6 §2.4)
+const ALLOWED_MIME_TYPES = [
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+    'application/pdf', 'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+const MAX_ATTACHMENT_SIZE_BYTES = 500 * 1024; // 500 KB
+
 function addAttachment(ticketId, file) {
     const ticket = getTicket(ticketId);
     if (!ticket) return;
+
+    // SECURITY: Validate MIME type
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        showToast(`İzin verilmeyen dosya tipi: ${escapeHtml(file.type)}`, 'error');
+        return null;
+    }
+
+    // SECURITY: Validate file size (base64 → bytes estimate)
+    const estimatedBytes = (file.data?.length ?? 0) * 0.75;
+    if (estimatedBytes > MAX_ATTACHMENT_SIZE_BYTES) {
+        showToast('Dosya boyutu sınırı aşıldı (maks. 500 KB).', 'error');
+        return null;
+    }
 
     // SECURITY: Sanitize filename to prevent path traversal
     const safeName = sanitizeFileName(file.name);
@@ -819,7 +877,8 @@ function addAttachment(ticketId, file) {
         id: Date.now(),
         name: safeName,
         type: file.type,
-        data: file.data
+        data: file.data,
+        size: Math.round(estimatedBytes)
     };
 
     const updatedAttachments = [...ticket.attachments, attachment];
@@ -832,7 +891,7 @@ function addAttachment(ticketId, file) {
     updateTicket(ticketId, {
         attachments: updatedAttachments,
         timeline: updatedTimeline,
-        authenticity_token: SecurityGuardian.getToken() // 🛡️ Fix CSRF
+        authenticity_token: SecurityGuardian.getToken()
     });
     return attachment;
 }
@@ -875,10 +934,10 @@ function getCategoryLabel(category) {
 // STATISTICS
 // ==========================================
 function updateStatistics() {
-    const total = tickets.length;
-    const open = tickets.filter(t => t.status === 'open').length;
-    const inProgress = tickets.filter(t => t.status === 'in-progress' || t.status === 'candidate').length;
-    const critical = tickets.filter(t => t.priority === 'critical').length;
+    const total = App.state.tickets.length;
+    const open = App.state.tickets.filter(t => t.status === 'open').length;
+    const inProgress = App.state.tickets.filter(t => t.status === 'in-progress' || t.status === 'candidate').length;
+    const critical = App.state.tickets.filter(t => t.priority === 'critical').length;
 
     document.getElementById('totalTickets').textContent = total;
     document.getElementById('openTickets').textContent = open;
@@ -893,11 +952,11 @@ function initCharts() {
         labels: ['Açık', 'Devam Eden', 'Aday (Ghost)', 'Çözüldü', 'Kapalı'],
         datasets: [{
             data: [
-                tickets.filter(t => t.status === 'open').length,
-                tickets.filter(t => t.status === 'in-progress').length,
-                tickets.filter(t => t.status === 'candidate').length,
-                tickets.filter(t => t.status === 'resolved').length,
-                tickets.filter(t => t.status === 'closed').length
+                App.state.tickets.filter(t => t.status === 'open').length,
+                App.state.tickets.filter(t => t.status === 'in-progress').length,
+                App.state.tickets.filter(t => t.status === 'candidate').length,
+                App.state.tickets.filter(t => t.status === 'resolved').length,
+                App.state.tickets.filter(t => t.status === 'closed').length
             ],
             backgroundColor: [
                 'rgba(255, 77, 0, 0.8)', // Open: Molten Orange
@@ -910,11 +969,11 @@ function initCharts() {
         }]
     };
 
-    if (statusChart) {
-        statusChart.destroy();
+    if (App.ui.charts.status) {
+        App.ui.charts.status.destroy();
     }
 
-    statusChart = new Chart(statusCtx, {
+    App.ui.charts.status = new Chart(statusCtx, {
         type: 'doughnut',
         data: statusData,
         options: {
@@ -940,10 +999,10 @@ function initCharts() {
         datasets: [{
             label: 'Tickets',
             data: [
-                tickets.filter(t => t.priority === 'low').length,
-                tickets.filter(t => t.priority === 'medium').length,
-                tickets.filter(t => t.priority === 'high').length,
-                tickets.filter(t => t.priority === 'critical').length
+                App.state.tickets.filter(t => t.priority === 'low').length,
+                App.state.tickets.filter(t => t.priority === 'medium').length,
+                App.state.tickets.filter(t => t.priority === 'high').length,
+                App.state.tickets.filter(t => t.priority === 'critical').length
             ],
             backgroundColor: [
                 'rgba(204, 255, 0, 0.8)', // Low: Hazard Lime
@@ -955,11 +1014,11 @@ function initCharts() {
         }]
     };
 
-    if (priorityChart) {
-        priorityChart.destroy();
+    if (App.ui.charts.priority) {
+        App.ui.charts.priority.destroy();
     }
 
-    priorityChart = new Chart(priorityCtx, {
+    App.ui.charts.priority = new Chart(priorityCtx, {
         type: 'bar',
         data: priorityData,
         options: {
@@ -1251,6 +1310,8 @@ function renderDetailPanel(ticketId) {
         const ticket = getTicket(ticketId);
         if (!ticket) return;
 
+        App.ui.selectedTicketId = ticketId;
+
         document.getElementById('detailTitle').textContent = ticket.title;
         document.getElementById('detailStatus').className = `badge badge-status-${ticket.status}`;
         document.getElementById('detailStatus').textContent = getStatusLabel(ticket.status);
@@ -1399,7 +1460,7 @@ function getFilteredTickets() {
     const priorityFilter = document.getElementById('priorityFilter').value;
     const categoryFilter = document.getElementById('categoryFilter').value;
 
-    return tickets.filter(ticket => {
+    return App.state.tickets.filter(ticket => {
         const matchesSearch = ticket.title.toLowerCase().includes(search) ||
             ticket.description.toLowerCase().includes(search);
         const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
@@ -1441,7 +1502,7 @@ function handleDrop(e) {
     if (draggedTicketId && newStatus) {
         updateTicket(draggedTicketId, {
             status: newStatus,
-            authenticity_token: SecurityGuardian._token
+            authenticity_token: SecurityGuardian.getToken()
         });
         renderKanbanView();
         updateStatistics();
@@ -1496,7 +1557,7 @@ function closeModal() {
 function openDetailPanel(ticketId) {
     try {
         console.log('Opening detail panel for:', ticketId);
-        selectedTicketId = ticketId;
+        App.ui.selectedTicketId = ticketId;
 
         // 🛡️ SECURITY: IDOR Guard (Simulated)
         // In a real app, we check if current_user can see this ticketId
@@ -1528,18 +1589,18 @@ function openDetailPanel(ticketId) {
 
 function closeDetailPanel() {
     document.getElementById('detailPanel').classList.remove('active');
-    selectedTicketId = null;
+    App.ui.selectedTicketId = null;
 }
 
 // ==========================================
 // THEME TOGGLE
 // ==========================================
 function toggleTheme() {
-    if (currentTheme === 'dark') {
-        currentTheme = 'light';
+    if (App.state.theme === 'dark') {
+        App.state.theme = 'light';
         document.body.classList.add('light-theme');
     } else {
-        currentTheme = 'dark';
+        App.state.theme = 'dark';
         document.body.classList.remove('light-theme');
     }
     saveToLocalStorage();
@@ -1554,7 +1615,7 @@ function render() {
     updateStatistics();
     initCharts();
 
-    if (currentView === 'list') {
+    if (App.ui.currentView === 'list') {
         renderListView();
     } else {
         renderKanbanView();
@@ -1568,7 +1629,7 @@ function render() {
 document.addEventListener('DOMContentLoaded', () => {
     // 🛡️ Initialize Security Guardian (Fortress Mode)
     SecurityGuardian.loadAuditLog();
-    SecurityGuardian.generateToken();
+    SecurityGuardian.getToken();
     SecurityGuardian.audit('System Start', 'Fortress Security Engine engaged', 'info');
     // Audit UI is rendered exclusively in audit.html
 
@@ -1658,7 +1719,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             const view = btn.dataset.view;
-            currentView = view;
+            App.ui.currentView = view;
 
             if (view === 'list') {
                 document.getElementById('listView').classList.remove('hidden');
@@ -1883,6 +1944,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const anomalyTracker = {
+        canCreate(anomalyType) {
+            const exists = App.state.tickets.some(t => t.title.includes(anomalyType) && t.status !== 'closed');
+            return !exists;
+        }
+    };
+
     function createAnomalyTicket() {
         const anomalies = [
             'Excel.exe - Stack Buffer Overflow (0x0000005)',
@@ -1917,6 +1985,8 @@ document.addEventListener('DOMContentLoaded', () => {
             'System: Multiple Explorer.exe restarts detected'
         ];
         const anomaly = anomalies[Math.floor(Math.random() * anomalies.length)];
+
+        if (!anomalyTracker.canCreate(anomaly)) return;
 
         // Create Candidate Ticket
         const ticket = createTicket({
@@ -1954,7 +2024,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         document.getElementById('deployFixBtn').addEventListener('click', () => {
-            const targetId = selectedTicketId;
+            const targetId = App.ui.selectedTicketId;
 
             if (!targetId) {
                 showToast('Hata: Bilet kimliği bulunamadı.', 'error');
@@ -1972,7 +2042,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ticket) {
                     updateTicket(targetId, {
                         status: 'resolved',
-                        authenticity_token: SecurityGuardian._token,
+                        authenticity_token: SecurityGuardian.getToken(),
                         timeline: [...ticket.timeline, {
                             action: '🚀 Çözüm canlı sistemlere başarıyla uygulandı.',
                             user: 'System (AI)',
@@ -2009,7 +2079,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('open-sandbox', (e) => {
-        selectedTicketId = e.detail;
+        App.ui.selectedTicketId = e.detail;
         openSandbox();
     });
 
@@ -2059,40 +2129,55 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>⚠️ VERİ RİSKİ:</strong> Index rebuilding sırasında tablo kilitlenebilir.',
             alt: 'Tabloyu Online Rebuild Et (Low Priority)',
             script: 'ALTER INDEX ALL ON [Users] REBUILD WITH (ONLINE = ON)'
+        }, {
+            type: 'critical',
+            msg: '<strong>🛑 UYUŞMAZLIK:</strong> Sürüm düşürme veri kaybına neden olabilir.',
+            alt: 'Standby Node Geçişi (Data Loss Yok)',
+            script: 'Failover-Database -Target "SecondaryNode"'
         }]
     },
     'network': {
-        name: 'DDoS Mitigation & Firewall Hardening',
+        name: 'Network & Connectivity Diagnostics',
         steps: [
-            'Analyzing inbound traffic spike (45GB/s)...',
-            'Applying Geo-IP blocking rules for known Botnet IPs...',
-            'Deploying Cloudflare Tunnel v2.1...',
-            'Enabling Layer 7 rate limiting (Limit: 500 req/s)...',
-            'Validating WAF signature database...',
-            'Network Posture: Under Control.'
+            'Running pathping and traceroute to target gateway...',
+            'Analyzing BGP routing tables...',
+            'Checking VPN concentrator active tunnels...',
+            'Detecting high latency (300ms) on SD-WAN branch...',
+            'Restarting localized network interfaces...',
+            'Network Posture: Route optimized.'
         ],
         risks: [{
             type: 'warning',
-            msg: '<strong>⚠️ TRAFİK KISITLAMASI:</strong> Agresif rate limiting gerçek kullanıcıları da engelleyebilir.',
-            alt: 'Akıllı Analiz Modu (Adaptive)',
-            script: 'Set-FirewallPolicy -Mode Adaptive -SecurityLevel High'
+            msg: '<strong>⚠️ TRAFİK KESİNTİSİ:</strong> Arayüz yeniden başlatma sırasında anlık bağlantı kopması yaşanabilir.',
+            alt: 'Sadece BGP Route Flush',
+            script: 'Clear-BgpRoute -Target "Branch-A" -Soft'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ GÜVENLİ İZLEME:</strong> Trafiği pasif SPAN porta al.',
+            alt: 'Monitor Moduna Geçiş',
+            script: 'Set-MirrorPort -Target "VPN-GW" -Mode Passive'
         }]
     },
     'security': {
-        name: 'SSL Certificate Expiry & Renewal',
+        name: 'Security & IPS Remediation',
         steps: [
-            'Checking certificate chain for *.ticketowsky.com...',
-            'Detected expired Root CA (Let\'s Encrypt ISRG Root X1)...',
-            'Initiating ACME v2 renewal protocol...',
-            'Pushing new PEM files to Nginx clusters...',
-            'Restarting web-balancing nodes...',
-            'Validation: HTTPS Secure (Valid until 2027).'
+            'Checking WAF signature database...',
+            'Analyzing firewall drop logs...',
+            'Isolating affected endpoint...',
+            'Deploying emergency IDPS ruleset...',
+            'Running malware heuristic scan...',
+            'Security Posture: Threat contained.'
         ],
         risks: [{
             type: 'critical',
-            msg: '<strong>🚫 KESİNTİ RİSKİ:</strong> Web servislerinin yeniden başlatılması 502 hatalarına yol açabilir.',
-            alt: 'Kademeli Reload (Zero-Downtime)',
-            script: 'nginx -s reload --mode seamless --graceful'
+            msg: '<strong>🛑 İZOLASYON RİSKİ:</strong> Endpoint izolasyonu iş sürekliliğini durdurabilir.',
+            alt: 'Sadece Ağ Karantinası (Monitor Mode)',
+            script: 'Set-FirewallPolicy -Mode MonitorOnly'
+        }, {
+            type: 'warning',
+            msg: '<strong>⚠️ YANLIŞ POZİTİF:</strong> Normal trafiği engelleyebilir.',
+            alt: 'Kullanıcı IP Whitelist',
+            script: 'Add-IPOverride -IP "10.0.X.X" -Duration 2h'
         }]
     },
     'adsync': {
@@ -2110,6 +2195,11 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>⚠️ KİMLİK ÇAKIŞMASI:</strong> Mevcut oturumların geçersiz kılınması ihtimali var.',
             alt: 'Session Persistence Modu',
             script: 'Sync-Identity -Flags PreserveSessions -Mode Safe'
+        }, {
+            type: 'critical',
+            msg: '<strong>🛑 PAROLA SENK. GECİKMESİ:</strong> Hash senkronizasyonu zaman alabilir.',
+            alt: 'Kısmi Olarak Sadece Yalnızca Parolaları Eşitle',
+            script: 'Start-ADSyncSyncCycle -PolicyType PasswordHash'
         }]
     },
     'fileserver': {
@@ -2127,6 +2217,11 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>🛑 VERİ KAYBI:</strong> Shadow Copy %100 güncel olmayabilir.',
             alt: 'Offline Backup\'dan Kısmi Kurtar',
             script: 'Restore-Data -Source ColdStorage -Target "CriticalShares"'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ READ-ONLY ERİŞİM:</strong> Yalnızca dosyaları okuma modunda aç.',
+            alt: 'Sistemi Read-Only Moda Al',
+            script: 'Set-SMBShare -Access ReadOnly -Force'
         }]
     },
     'ui': {
@@ -2144,23 +2239,33 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>✅ GÜVENLİ:</strong> Bu işlem sadece tarayıcı tarafında CSS ve JS günceller.',
             alt: 'Shadow DOM İzolasyonu Uygula',
             script: 'Add-Styles --isolation shadow --target "LegacyHeader"'
+        }, {
+            type: 'warning',
+            msg: '<strong>⚠️ CLS RİSKİ:</strong> Düzen değişiklikleri CLS puanını etkileyebilir.',
+            alt: 'Lazy Load İle Geciktir',
+            script: 'Enable-LazyRendering -Components "Hero,Footer"'
         }]
     },
     'hardware': {
-        name: 'Predictive Hardware Maintenance',
+        name: 'Hardware Diagnostics & Repair',
         steps: [
+            'System Information > Power: checking cycle count and battery condition...',
             'Querying SSD NVMe S.M.A.R.T attributes...',
-            'Detected rising Reallocated Sector Count on Disk 0...',
-            'Analyzing thermal throttling on P-Cores (Current: 92°C)...',
-            'Applying undervolt profile to reduce TDP...',
-            'Scheduling background defrag for ColdStorage...',
-            'Hardware Health: Stabilized (Requires monitor).'
+            'Analyzing thermal sensors...',
+            'Detected physical anomaly (swelling/degradation)...',
+            'Running Apple Diagnostics / Manufacturer Diagnostics...',
+            'Hardware Health: Service required.'
         ],
         risks: [{
+            type: 'critical',
+            msg: '<strong>🔥 FİZİKSEL TEHLİKE:</strong> Batarya şişmesi yangın riski taşır.',
+            alt: 'Batarya devresini yazılımsal olarak bypass et (Geçici)',
+            script: 'Set-BatteryCharge -Limit 0% -BypassCircuit $true'
+        }, {
             type: 'warning',
-            msg: '<strong>🔥 SICAKLIK UYARISI:</strong> Undervolting sistem kararlılığını anlık etkileyebilir.',
-            alt: 'Throttle Limitlerini Sıkılaştır',
-            script: 'Set-CPUConfig -TempLimit 85C -Priority Economy'
+            msg: '<strong>📉 PERFORMANS DÜŞÜŞÜ:</strong> Thermal throttling nedeniyle işlemci hızı yavaşlatıldı.',
+            alt: 'Aygıtı Servis Moduna Al',
+            script: 'Start-ServiceDiagnostics -Mode Safe'
         }]
     },
     'loadbalancer': {
@@ -2178,6 +2283,11 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>⚠️ TRAFİK KESİNTİSİ:</strong> Varnish temizleme anlık gecikme yaratabilir.',
             alt: 'Kademeli Geçiş (Blue/Green)',
             script: 'Switch-Traffic -Target "Green" -Weight 10 -Step 5'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ DENGELEME MODU:</strong> Node izolasyonu load dağılımını optimize eder.',
+            alt: 'Connection Draining Modu (Graceful)',
+            script: 'Set-NodeState -Name "Node-04" -Mode Draining'
         }]
     },
     'encryption': {
@@ -2195,6 +2305,141 @@ const SCENARIO_LIBRARY = {
             msg: '<strong>🛑 ŞİFRELEME RİSKİ:</strong> Yanlış key senkronizasyonu tüm datayı erişilmez kılar.',
             alt: 'Dual-Key Modu (Legacy Support)',
             script: 'Set-VaultPolicy -SupportLegacyKeys $true -Duration 48h'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ ROLLBACK HAZIR:</strong> Önceki vault şifresi yedekte.',
+            alt: 'Önceki Key ile Geri Al',
+            script: 'Rollback-VaultKey -Id "MK-991-PREV"'
+        }]
+    },
+    'infra': {
+        name: 'Infrastructure & Container Orchestration',
+        steps: [
+            'Container log analizi (docker logs / kubectl logs)...',
+            'Image layer ve registry erişimi doğrulama...',
+            'Resource limit ve quota kontrolü (CPU/Memory)...',
+            'Orchestration event incelemesi (kubectl describe pod)...',
+            'Health check ve readiness probe yapılandırması...',
+            'Infra: Deployment stabilized.'
+        ],
+        risks: [{
+            type: 'warning',
+            msg: '<strong>⚠️ KAYNAK YETERSİZLİĞİ:</strong> Limit artırımı node üzerinde OOM kill tetikleyebilir.',
+            alt: 'Limitleri %10 Artır ve İzle',
+            script: 'Set-PodResources -CpuLimit +10% -MemLimit +10%'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ İZOLASYON:</strong> Namespace bazlı test güvenlidir.',
+            alt: 'Namespace izolasyonu ile test deploy',
+            script: 'Deploy-Container -Namespace "Sandbox-Isolated"'
+        }, {
+            type: 'critical',
+            msg: '<strong>🛑 GÜVENLİK RİSKİ:</strong> Root yetkili container sızıntıya neden olabilir.',
+            alt: 'Image yeniden build + push (Non-Root)',
+            script: 'Build-Image -Context "prod" -Flags "--security-opt=no-new-privileges"'
+        }]
+    },
+    'office365': {
+        name: 'Microsoft 365 / Office Workspace Repair',
+        steps: [
+            'Add-in manifest XML doğrulama...',
+            'COM/VSTO kayıt kontrolü (regsvr32)...',
+            'Office Safe Mode ile test (outlook /safe)...',
+            'Add-in log analizi (%TEMP%\\Diagnostics)...',
+            'Office Online Onarım aracı çalıştırılıyor...',
+            'Office365: Integrity verified.'
+        ],
+        risks: [{
+            type: 'warning',
+            msg: '<strong>⚠️ UYGULAMA KAPANMASI:</strong> Office onarım işlemi arka plandaki tüm M365 uygulamalarını kapatır.',
+            alt: 'Sadece Eklentiyi Devre Dışı Bırak',
+            script: 'Disable-OfficeAddin -Id "TargetAddin"'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ ALTERNATİF:</strong> Web versiyonunu geçici olarak kullan.',
+            alt: 'Web App Yönlendirmesi (Geçici)',
+            script: 'Set-UserPreference -ForceWebMail $true'
+        }, {
+            type: 'warning',
+            msg: '<strong>⚠️ PROFİL BOZULMASI:</strong> Yeni Outlook profili yerel cache (OST) silinmesine sebep olabilir.',
+            alt: 'Sadece Mail Kutusu Temizliği (Index Koru)',
+            script: 'Repair-OutlookProfile -PreserveOST'
+        }]
+    },
+    'email': {
+        name: 'Mail Routing & SMTP Queue Analysis',
+        steps: [
+            'Mail queue boyutu ve yaş analizi (mailq)...',
+            'SMTP bağlantı testi (telnet mx.domain.com 25)...',
+            'MX kaydı ve TTL doğrulama...',
+            'SPF / DKIM / DMARC kayıt kontrolü...',
+            'Relay host erişilebilirlik testi...',
+            'Email: Mail flow restored.'
+        ],
+        risks: [{
+            type: 'warning',
+            msg: '<strong>⚠️ GECİKME:</strong> Kuyruk flush işlemi anlık yoğunluğa neden olabilir.',
+            alt: 'Kuyruğu Kademeli Boşalt (Retry Policy)',
+            script: 'Flush-MailQueue -RateLimit 50/min'
+        }, {
+            type: 'critical',
+            msg: '<strong>🛑 SPAM SKORU:</strong> Yanlış relay yapılandırması domain repütasyonunu düşürür.',
+            alt: 'Alternatif SMTP Relay\'e Geçiş',
+            script: 'Switch-SmtpRelay -Provider "Backup-SES"'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ YEDEK MX:</strong> Gelen trafik ikincil kayıta devredilecek.',
+            alt: 'Mail Gateway Failover',
+            script: 'Set-MXPriority -Primary "Backup-MX"'
+        }]
+    },
+    'identity': {
+        name: 'Identity & Access Management',
+        steps: [
+            'Kimlik doğrulama: telefon/video ile yüz yüze doğrulama...',
+            'MFA token reset (TOTP seed yenile)...',
+            'AD/AAD üzerinden güvenli parola sıfırlama...',
+            'Son giriş ve konum kontrolü (şüpheli erişim var mı?)...',
+            'Oturum token\'larını geçersiz kıl (tüm cihazlar)...',
+            'Identity: Secure access granted.'
+        ],
+        risks: [{
+            type: 'critical',
+            msg: '<strong>🚨 YETKİLENDİRME RİSKİ:</strong> C-level hesap işlemleri IT manager onayı gerektirir.',
+            alt: 'Geçici Erişim Token\'ı Gönder (Time-limited)',
+            script: 'Grant-TemporaryAccess -Duration 2h -RequireMFA $true'
+        }, {
+            type: 'safe',
+            msg: '<strong>✅ GÜVENLİ YÖNETİM:</strong> Standart yedek kod prosedürü işler.',
+            alt: 'Backup Recovery Code İle Kurtar',
+            script: 'Verify-BackupCode -PromptUser'
+        }, {
+            type: 'warning',
+            msg: '<strong>⚠️ OTURUM DÜŞMESİ:</strong> Tüm cihazlardan mecburi çıkış yapılır.',
+            alt: 'Sadece Şüpheli Cihazın Oturumunu Kapat',
+            script: 'Revoke-Session -DeviceId "Unrecognized-Mac"'
+        }]
+    },
+    'generic_support': {
+        name: 'General Diagnostics & Support Routing',
+        steps: [
+            'Collecting system state and user telemetry...',
+            'Querying recent system updates and configuration changes...',
+            'Performing basic health checks (Disk, Memory, CPU)...',
+            'Attempting to reproduce the reported issue...',
+            'Compiling diagnostic bundle for escalation...',
+            'Status: Pending Vendor or L2 escalation.'
+        ],
+        risks: [{
+            type: 'safe',
+            msg: '<strong>✅ BİLGİ TOPLAMA:</strong> Teşhis işlemi sisteme zarar vermez.',
+            alt: 'Kullanıcıya Otomatik Fix-It Aracı Gönder',
+            script: 'Send-DiagnosticTool -Mode Silent'
+        }, {
+            type: 'warning',
+            msg: '<strong>⚠️ ZAMAN KAYBI:</strong> Escalation işlemi çözüm süresini uzatabilir.',
+            alt: 'Standart İşletim Sistemi Onarımı (SFC / DISM)',
+            script: 'Invoke-Command -ScriptBlock { sfc /scannow }'
         }]
     }
 };
@@ -2208,21 +2453,26 @@ const VAULT = {
     'ui': 'UX_DEV',
     'hardware': 'SYS_ADMIN',
     'loadbalancer': 'NET_ADMIN',
-    'encryption': 'SEC_ADMIN'
+    'encryption': 'SEC_ADMIN',
+    'infra': 'DEVOPS',
+    'office365': 'SYS_ADMIN',
+    'email': 'NET_ADMIN',
+    'identity': 'SEC_ADMIN',
+    'generic_support': 'SUPPORT'
 };
 
 function openSandbox() {
-    console.log('Attempting to open sandbox for ticket:', selectedTicketId);
+    console.log('Attempting to open sandbox for ticket:', App.ui.selectedTicketId);
 
-    if (!selectedTicketId) {
+    if (!App.ui.selectedTicketId) {
         console.error('openSandbox failed: No ticket selected.');
         showToast('Hata: Önce bir bilet seçmelisiniz.', 'error');
         return;
     }
 
-    const ticket = getTicket(selectedTicketId);
+    const ticket = getTicket(App.ui.selectedTicketId);
     if (!ticket) {
-        console.error('openSandbox failed: Ticket not found for ID', selectedTicketId);
+        console.error('openSandbox failed: Ticket not found for ID', App.ui.selectedTicketId);
         showToast('Hata: Seçili bilet verisi yüklenemedi.', 'error');
         return;
     }
@@ -2241,19 +2491,19 @@ function openSandbox() {
 
     // STATE MANAGEMENT: Check if ticket has a saved sandbox state
     if (!ticket.sandboxSession) {
-        console.log('Starting fresh sandbox session for ticket:', selectedTicketId);
+        console.log('Starting fresh sandbox session for ticket:', App.ui.selectedTicketId);
 
         // Match scenario to ticket content intelligently
         const combined = (ticket.title + ' ' + ticket.description + ' ' + ticket.category).toLowerCase();
-        let scenarioKey = 'database'; // fallback
+        let scenarioKey = 'generic_support'; // fallback
 
-        if (combined.match(/ssl|certificate|sertifika|https|tls|brute.?force|firewall|güvenlik|security|vpn|şifre|şifrele|encrypt|password|phishing|vulnerability|cve|cyber/)) {
+        if (combined.match(/ssl|certificate|sertifika|https|tls|brute.?force|firewall|güvenlik|security|phishing|vulnerability|cve|cyber/)) {
             scenarioKey = 'security';
-        } else if (combined.match(/network|ağ|latency|bant|bandwidth|dns|vpn|packet|firewall|port|ddos|internet|connectivity|wifi|wi-fi|branch|şube|isp/)) {
+        } else if (combined.match(/vpn|network|ağ|latency|bant|bandwidth|dns|dhcp|packet|port|ddos|internet|connectivity|wifi|wi-fi|branch|şube|isp/)) {
             scenarioKey = 'network';
         } else if (combined.match(/database|db|sql|deadlock|index|transaction|etl|data.?warehouse|backup|redis|cache|elasticsearch/)) {
             scenarioKey = 'database';
-        } else if (combined.match(/active.?directory|ad.?sync|ldap|domain.?controller|kullanıcı.?yetki|azure.?ad|kimlik/)) {
+        } else if (combined.match(/active.?directory|ad.?sync|ldap|domain.?controller|kullanıcı.?yetki|azure.?ad/)) {
             scenarioKey = 'adsync';
         } else if (combined.match(/ransomware|fidye|file.?server|dosya.?sunucu|shadow.?copy|backup|yedek/)) {
             scenarioKey = 'fileserver';
@@ -2261,12 +2511,18 @@ function openSandbox() {
             scenarioKey = 'hardware';
         } else if (combined.match(/load.?balanc|nginx|varnish|cluster|node|trafik|ağırlık|yük.?devret/)) {
             scenarioKey = 'loadbalancer';
-        } else if (combined.match(/encrypt|vault|key.?rotation|anahtar|şifrele|k8s|secret/)) {
+        } else if (combined.match(/encrypt|vault|key.?rotation|anahtar|k8s|secret/)) {
             scenarioKey = 'encryption';
         } else if (combined.match(/ui|ux|css|frontend|react|dashboard|ekran|görsel|performans|render|layout/)) {
             scenarioKey = 'ui';
-        } else if (combined.match(/kubernetes|docker|container|k8s|pod|microservice|memory|oom|heap/)) {
-            scenarioKey = 'database'; // closest match for infra issues
+        } else if (combined.match(/kubernetes|docker|container|k8s|pod|microservice|memory|oom|heap|image|registry/)) {
+            scenarioKey = 'infra'; 
+        } else if (combined.match(/office365|office|outlook|add-in|vsto|excel|word|m365|com.?add/)) {
+            scenarioKey = 'office365';
+        } else if (combined.match(/email|e-mail|mail|smtp|exchange|relay|spam|mx|spf|dkim|dmarc|queue/)) {
+            scenarioKey = 'email';
+        } else if (combined.match(/identity|kimlik|şifre|şifrele|password|reset|sıfırl|mfa|2fa|totp|ceo|vip/)) {
+            scenarioKey = 'identity';
         }
 
         const scenario = SCENARIO_LIBRARY[scenarioKey];
@@ -2295,7 +2551,7 @@ function openSandbox() {
 
         document.getElementById('deployFixBtn').disabled = true;
     } else {
-        console.log('Resuming existing sandbox session for ticket:', selectedTicketId);
+        console.log('Resuming existing sandbox session for ticket:', App.ui.selectedTicketId);
         // SECURITY: Restore from text-only data using createSafeElement (prevents XSS)
         terminal.innerHTML = '';
         if (ticket.sandboxSession.terminalLines) {
@@ -2338,7 +2594,7 @@ async function runSimulation(alternativeScript = null) {
     const term = document.getElementById('sandboxTerminal');
     const simulateBtn = document.getElementById('simulateFixBtn');
     const deployBtn = document.getElementById('deployFixBtn');
-    const ticketId = selectedTicketId; // Localize ID to prevent cross-ticket pollution if global changes
+    const ticketId = App.ui.selectedTicketId; // Localize ID to prevent cross-ticket pollution if global changes
     const ticket = getTicket(ticketId);
 
     if (!ticket) {
@@ -2384,7 +2640,7 @@ async function runSimulation(alternativeScript = null) {
         for (const line of lines) {
             await new Promise(r => setTimeout(r, 400 + Math.random() * 800));
             // Check if modal is still active AND if we are still on the same ticket
-            if (!document.getElementById('sandboxModal').classList.contains('active') || selectedTicketId !== ticketId) {
+            if (!document.getElementById('sandboxModal').classList.contains('active') || App.ui.selectedTicketId !== ticketId) {
                 console.log('Simulation aborted: Modal closed or ticket changed');
                 return;
             }
@@ -2467,7 +2723,7 @@ function analyzeImpact(executedSteps, scenarioKey = null) {
     let risks = [];
 
     // Get already-applied alternatives for the current ticket
-    const ticket = getTicket(selectedTicketId);
+    const ticket = getTicket(App.ui.selectedTicketId);
     const appliedAlternatives = (ticket && ticket.sandboxSession && ticket.sandboxSession.appliedAlternatives) || [];
 
     // Add scenario-specific risks if they exist and haven't been bypassed or already applied
@@ -2642,7 +2898,7 @@ function scanHardwareHealth() {
 
     setTimeout(() => {
         // Use selectedTicketId as a seed
-        const seed = selectedTicketId ? selectedTicketId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) : Math.random();
+        const seed = App.ui.selectedTicketId ? App.ui.selectedTicketId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) : Math.random();
 
         const metrics = [
             { label: 'NVMe SSD Sağlığı', value: `%${30 + (seed % 60)}${seed % 3 === 0 ? ' (KRİTİK)' : ' (İyi)'}`, critical: seed % 3 === 0, part: '512GB NVMe SSD' },
@@ -2696,18 +2952,37 @@ function humanizeTechnicalText(text) {
     return `[İNSAN DİLİNE TERCÜME]\n\nGerçekleştirilen işlem: ${humanized}\n\nÖzetle: Sistem performansını optimize etmek ve teknik aksaklıkları gidermek adına gerekli düzenlemeler yapılmıştır. Lütfen kontrol eder misiniz?`;
 }
 
-// Global SLA Update Interval
-setInterval(() => {
-    document.querySelectorAll('.sla-digital-clock').forEach(el => {
-        const id = el.dataset.id;
-        const ticket = getTicket(id);
-        if (ticket && ticket.status !== 'resolved' && ticket.status !== 'closed') {
-            const sla = calculateSLA(ticket);
-            el.textContent = formatSLATime(sla.remainingSeconds);
-            el.className = `sla-badge status-${sla.status} sla-digital-clock`;
+// SLA Clock with lifecycle management (Bug Report v6 §1.3)
+const SLAClock = {
+    _intervalId: null,
+
+    start() {
+        if (this._intervalId) this.stop();
+        this._intervalId = setInterval(() => this._tick(), 1000);
+    },
+
+    stop() {
+        if (this._intervalId) {
+            clearInterval(this._intervalId);
+            this._intervalId = null;
         }
-    });
-}, 1000);
+    },
+
+    _tick() {
+        document.querySelectorAll('.sla-digital-clock').forEach(el => {
+            const id = el.dataset.id;
+            const ticket = getTicket(id);
+            if (ticket && ticket.status !== 'resolved' && ticket.status !== 'closed') {
+                const sla = calculateSLA(ticket);
+                el.textContent = formatSLATime(sla.remainingSeconds);
+                el.className = `sla-badge status-${sla.status} sla-digital-clock`;
+            }
+        });
+    }
+};
+
+SLAClock.start();
+window.addEventListener('beforeunload', () => SLAClock.stop());
 
 // REPLACED: Consolidated passTicket version moved to line 625
 
