@@ -155,7 +155,7 @@ Tüm güvenlik olayları `localStorage['security_audit_log']` içinde saklanır.
 Sunucu kurulumu gerektirmez. Sadece dosyaları indirip tarayıcıda açın:
 
 ```bash
-git clone https://github.com/username/ticketowsky.git
+git clone https://github.com/ibrahimyigitcetin/ticketowsky.git
 cd ticketowsky
 # index.html dosyasını tarayıcınızda açın
 ```
