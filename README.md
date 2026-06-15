@@ -10,8 +10,8 @@
 ---
 
 <div align="center">
-  <img src="https://img.shields.io/badge/languages-3-blueviolet?style=flat-square">
-  <img src="https://img.shields.io/badge/language-JavaScript-F0DB4F?style=flat-square">
+  <img src="https://img.shields.io/badge/languages-3-blueviolet?style=flat-square" alt="Language Count">
+  <img src="https://img.shields.io/badge/JavaScript-59.2%25-F0DB4F?style=flat-square" alt="Top Language">
   <img src="https://img.shields.io/github/last-commit/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=ff69b4" alt="Last Commit">
   <img src="https://img.shields.io/github/license/ibrahimyigitcetin/Ticketowsky?style=flat-square&color=yellow" alt="License">
   <img src="https://img.shields.io/badge/Status-Active-green?style=flat-square" alt="Status">
