@@ -71,7 +71,14 @@
                 : normalizedLogs.filter(log => log.severity === filter);
 
             if (normalizedLogs.length > 0 && filteredLogs.length === 0) {
-                tbody.innerHTML = `<tr class="empty-state"><td colspan="4">Bu seviyede (${filter}) kayıt bulunmamaktadır. Toplam ${normalizedLogs.length} kayıt var.</td></tr>`;
+                tbody.innerHTML = '';
+                const emptyTr = document.createElement('tr');
+                emptyTr.className = 'empty-state';
+                const emptyTd = document.createElement('td');
+                emptyTd.colSpan = 4;
+                emptyTd.textContent = `Bu seviyede (${filter}) kayıt bulunmamaktadır. Toplam ${normalizedLogs.length} kayıt var.`;
+                emptyTr.appendChild(emptyTd);
+                tbody.appendChild(emptyTr);
                 return;
             }
 
