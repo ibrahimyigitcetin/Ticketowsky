@@ -61,8 +61,8 @@ function sanitizeText(input) {
     if (typeof input !== 'string') {
         return '';
     }
-    // Remove all HTML tags completely
-    return input.replace(/<[^>]*>/g, '');
+    // Remove angle brackets to prevent any HTML tag construction
+    return input.replace(/[<>]/g, '');
 }
 
 /**
